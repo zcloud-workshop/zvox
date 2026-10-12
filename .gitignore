@@ -1,0 +1,32 @@
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+!.env.example
+
+settings.local.json
+.claude/settings.json
+
+
+# python
+__pycache__/
+*.py[cod]
+venv
+.venv
+
+# other
+model
+speaker
+demo
+.claude/
+.v2c/
