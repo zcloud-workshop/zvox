@@ -103,6 +103,12 @@ pnpm dev
 
 配置从 `.env` 或环境变量读取, 已设置的环境变量优先. 完整模板见 [.env.example](.env.example), 下表列出代码默认值. 相对路径以运行目录为基准, 后端和工具命令应从仓库根目录执行.
 
+### 服务
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `PORT` | `8000` | `main.py` 监听端口, 命令行 `--port` 优先 |
+
 ### 数据库与模型
 
 | 变量 | 默认值 | 说明 |
@@ -205,7 +211,7 @@ uv run --no-sync python -m app.tools.download_model --check
 
 部署使用一个服务实例和一个 Uvicorn Worker. 队列, 模型状态和登录限流保存在进程内, 多 Worker 或多实例需要额外的共享队列与推理协调机制.
 
-修改监听地址和端口:
+修改监听地址和端口. 端口也可通过 `.env` 或环境变量中的 `PORT` 设置, 命令行 `--port` 优先:
 
 ```bash
 uv run --no-sync python main.py --host 127.0.0.1 --port 8000

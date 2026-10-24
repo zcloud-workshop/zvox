@@ -53,7 +53,7 @@ nvm 需在当前 Shell 可用; 缺失时先安装或修复, 不使用其他 Node
 
 访问 `http://127.0.0.1:8000` 打开页面, `http://127.0.0.1:8000/docs` 查看 API 文档. 启动时有 `frontend/dist/index.html` 才注册前端托管; 没有构建时继续提供 API, 之后构建需要重启后端. `/jobs/{id}` 等页面支持刷新回退, 缺失静态资源返回 404. API 路由和错误不会回退成 HTML, 原有 404 和 405 行为保留.
 
-`main.py` 默认监听 `0.0.0.0:8000`, 不开启 reload. 更改监听地址和端口:
+`main.py` 默认监听 `0.0.0.0:8000`, 不开启 reload. 端口也可通过 `.env` 或环境变量中的 `PORT` 设置, 命令行 `--port` 优先于 `PORT`, 已设置的环境变量优先于 `.env`. 直接使用 `uvicorn` 命令启动时不读取 `PORT`. 更改监听地址和端口:
 
 ```bash
 uv run --no-sync python main.py --host 127.0.0.1 --port 8000
