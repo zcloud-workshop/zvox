@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# 服务监听端口, 启动参数 --port 优先
+PORT = int(os.getenv("PORT", "7682"))
+
 # PostgreSQL 连接地址
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 

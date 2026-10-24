@@ -51,12 +51,12 @@ uv run --no-sync python main.py
 
 nvm 需在当前 Shell 可用; 缺失时先安装或修复, 不使用其他 Node 来源替代. 构建机可以提前产出 `frontend/dist/`, 部署机随代码接收该目录后只执行 Python 安装与启动步骤.
 
-访问 `http://127.0.0.1:8000` 打开页面, `http://127.0.0.1:8000/docs` 查看 API 文档. 启动时有 `frontend/dist/index.html` 才注册前端托管; 没有构建时继续提供 API, 之后构建需要重启后端. `/jobs/{id}` 等页面支持刷新回退, 缺失静态资源返回 404. API 路由和错误不会回退成 HTML, 原有 404 和 405 行为保留.
+访问 `http://127.0.0.1:7682` 打开页面, `http://127.0.0.1:7682/docs` 查看 API 文档. 启动时有 `frontend/dist/index.html` 才注册前端托管; 没有构建时继续提供 API, 之后构建需要重启后端. `/jobs/{id}` 等页面支持刷新回退, 缺失静态资源返回 404. API 路由和错误不会回退成 HTML, 原有 404 和 405 行为保留.
 
-`main.py` 默认监听 `0.0.0.0:8000`, 不开启 reload. 更改监听地址和端口:
+`main.py` 默认监听 `0.0.0.0:7682`, 不开启 reload. 端口可在 `.env` 或环境变量中通过 `PORT` 修改, 启动参数 `--port` 优先. 更改监听地址和端口:
 
 ```bash
-uv run --no-sync python main.py --host 127.0.0.1 --port 8000
+uv run --no-sync python main.py --host 127.0.0.1 --port 7682
 ```
 
 公网 HTTPS 入口可接入现有反向代理, 页面和 API 共同转发到后端. 如需独立托管静态文件, 保留 [前端 Nginx 配置](../frontend/nginx.conf). 浏览器必须能访问 API 返回的 S3 头像与预签名音频地址.

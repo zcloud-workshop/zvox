@@ -58,14 +58,14 @@ cd ..
 uv run --no-sync python main.py
 ```
 
-nvm 必须在当前 Shell 可用, 缺失时先安装或修复 nvm. 后端默认监听 `0.0.0.0:8000`, 使用一个 Uvicorn Worker, 不开启自动重载.
+nvm 必须在当前 Shell 可用, 缺失时先安装或修复 nvm. 后端默认监听 `0.0.0.0:7682`, 端口可通过 `PORT` 环境变量修改, 使用一个 Uvicorn Worker, 不开启自动重载.
 
 | 入口 | 地址 |
 | --- | --- |
-| 网页工作台 | [http://127.0.0.1:8000](http://127.0.0.1:8000) |
-| Swagger UI | [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) |
-| 存活检查 | [http://127.0.0.1:8000/api/health/live](http://127.0.0.1:8000/api/health/live) |
-| 就绪检查 | [http://127.0.0.1:8000/api/health/ready](http://127.0.0.1:8000/api/health/ready) |
+| 网页工作台 | [http://127.0.0.1:7682](http://127.0.0.1:7682) |
+| Swagger UI | [http://127.0.0.1:7682/docs](http://127.0.0.1:7682/docs) |
+| 存活检查 | [http://127.0.0.1:7682/api/health/live](http://127.0.0.1:7682/api/health/live) |
+| 就绪检查 | [http://127.0.0.1:7682/api/health/ready](http://127.0.0.1:7682/api/health/ready) |
 
 后端启动时检测 `frontend/dist/index.html` 并注册网页托管. 未构建前端时只提供 API, 构建完成后需要重启后端.
 
@@ -97,11 +97,17 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-访问 [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite 将 `/api` 代理到 `http://127.0.0.1:8000`, 需同时运行后端. 前端使用真实后端提供的音色和账号. 页面路由, 轮询, 会话和独立静态部署说明见 [前端 README](frontend/README.md).
+访问 [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite 将 `/api` 代理到 `http://127.0.0.1:7682`, 需同时运行后端. 后端改用其他端口时, 同步修改 `frontend/vite.config.ts` 中的代理地址. 前端使用真实后端提供的音色和账号. 页面路由, 轮询, 会话和独立静态部署说明见 [前端 README](frontend/README.md).
 
 ## 配置
 
 配置从 `.env` 或环境变量读取, 已设置的环境变量优先. 完整模板见 [.env.example](.env.example), 下表列出代码默认值. 相对路径以运行目录为基准, 后端和工具命令应从仓库根目录执行.
+
+### 服务
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `PORT` | `7682` | `main.py` 的监听端口, 启动参数 `--port` 优先 |
 
 ### 数据库与模型
 
@@ -205,10 +211,10 @@ uv run --no-sync python -m app.tools.download_model --check
 
 部署使用一个服务实例和一个 Uvicorn Worker. 队列, 模型状态和登录限流保存在进程内, 多 Worker 或多实例需要额外的共享队列与推理协调机制.
 
-修改监听地址和端口:
+修改监听地址和端口, 启动参数优先于 `PORT`:
 
 ```bash
-uv run --no-sync python main.py --host 127.0.0.1 --port 8000
+uv run --no-sync python main.py --host 127.0.0.1 --port 7682
 ```
 
 前端构建完成后由 FastAPI 提供页面和 API, 支持 SPA 页面刷新回退. 也可使用 [Nginx 示例](frontend/nginx.conf) 独立托管静态文件并代理 `/api`. 浏览器需要直接访问 S3 头像和音频地址, HTTPS 页面应使用 HTTPS 存储地址. 反向代理部署需在 Uvicorn 中配置可信代理, 登录限流使用 `request.client.host` 识别客户端.

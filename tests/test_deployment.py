@@ -1,6 +1,8 @@
 import asyncio
 import importlib
 import json
+import os
+import runpy
 import sys
 import tempfile
 import threading
@@ -12,12 +14,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import uvicorn
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.admin import router as admin_router
 from app.api.frontend import FrontendFiles, FrontendMount
 from app.api.users import require_admin
+from app.core import config
 from app.services import model, tts
 from app.tools import download_model
 
@@ -218,6 +222,28 @@ class FrontendDeploymentTests(unittest.TestCase):
 
         asyncio.run(scenario(True))
         asyncio.run(scenario(False))
+
+
+class StartupPortTests(unittest.TestCase):
+    def start(self, *args):
+        with patch.object(sys, "argv", ["main.py", *args]), patch.object(uvicorn, "run") as run:
+            runpy.run_path(str(Path(__file__).resolve().parents[1] / "main.py"), run_name="__main__")
+        return run.call_args.kwargs["port"]
+
+    def test_port_defaults_to_7682_and_reads_environment(self):
+        try:
+            with patch("dotenv.load_dotenv"), patch.dict(os.environ):
+                os.environ.pop("PORT", None)
+                self.assertEqual(importlib.reload(config).PORT, 7682)
+                os.environ["PORT"] = "9001"
+                self.assertEqual(importlib.reload(config).PORT, 9001)
+        finally:
+            importlib.reload(config)
+
+    def test_command_line_port_overrides_configured_port(self):
+        with patch.object(config, "PORT", 9002):
+            self.assertEqual(self.start(), 9002)
+            self.assertEqual(self.start("--port", "9003"), 9003)
 
 
 if __name__ == "__main__":

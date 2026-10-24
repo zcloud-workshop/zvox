@@ -11,7 +11,7 @@ uv sync
 # Run the server (with auto-reload)
 python main.py
 # or
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 7682
 ```
 
 Run regressions with `uv run python -m unittest discover -s tests -v`. Database tests require `TEST_DATABASE_URL` and use temporary schemas. No linter is configured.
