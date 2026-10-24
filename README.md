@@ -172,10 +172,10 @@ output/{job_id}/
 | 能力 | 接口 | 权限 |
 | --- | --- | --- |
 | 登录 | `POST /api/auth/login` | 公开 |
-| 浏览音色 | `GET /api/speakers`, `GET /api/speakers/{speaker_id}` | 公开 |
 | 健康检查 | `GET /api/health/live`, `GET /api/health/ready` | 公开 |
 | 当前账号与密码 | `GET /api/users/me`, `POST /api/users/me/password` | 登录用户 |
 | 退出登录 | `POST /api/auth/logout` | 登录用户 |
+| 浏览音色 | `GET /api/speakers`, `GET /api/speakers/{speaker_id}` | 登录用户 |
 | 创建和查询任务 | `POST /api/jobs`, `GET /api/jobs`, `GET /api/jobs/{job_id}` | 登录用户 |
 | 用户管理 | `/api/admin/users` 及用户修改, 密码重置接口 | 管理员 |
 | 创建和导入音色 | `POST /api/admin/speakers`, `POST /api/admin/speakers/sync` | 管理员 |

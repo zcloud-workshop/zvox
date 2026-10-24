@@ -29,7 +29,7 @@ describe('API requests', () => {
     expect(fetcher.mock.calls[0][1].headers.get('Authorization')).toBe(
       'Bearer test-token',
     )
-    await request('/speakers', { auth: false })
+    await request('/auth/login', { method: 'POST', auth: false })
     expect(fetcher.mock.calls[1][1].headers.has('Authorization')).toBe(false)
   })
   it('clears an expired protected session but preserves it for failed login', async () => {
