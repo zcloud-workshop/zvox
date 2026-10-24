@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.users import get_current_user
 from app.models.schemas import Speaker
 from app.services import speaker as speaker_service
 
-router = APIRouter(prefix="/api", tags=["speakers", "Guest"])
+router = APIRouter(prefix="/api", tags=["speakers"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/speakers", response_model=list[Speaker])

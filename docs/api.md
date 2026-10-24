@@ -58,6 +58,7 @@ Content-Type: application/json
 
 ```text
 GET /api/speakers
+Authorization: Bearer <access_token>
 ```
 
 ```json
@@ -76,6 +77,8 @@ GET /api/speakers
 ```text
 GET /api/speakers/1
 ```
+
+列表和详情仅对登录用户开放, 未登录或 Token 无效返回 `401`.
 
 ### 上传音频并创建 Speaker
 

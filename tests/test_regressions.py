@@ -123,6 +123,25 @@ class UserApiTests(DatabaseCase):
             expired_auth = self.auth("bob", "bob-password-123")
         self.assertEqual(self.client.get("/api/users/me", headers=expired_auth).status_code, 401)
 
+    def test_speakers_require_authentication(self):
+        conn = database.get_db()
+        conn.execute("INSERT INTO speakers (id, name) VALUES (1, 'Speaker')")
+        conn.commit()
+        conn.close()
+        for path in ("/api/speakers", "/api/speakers/1", "/api/speakers/2"):
+            for headers in ({}, {"Authorization": "Bearer invalid"}):
+                with self.subTest(path=path, headers=headers):
+                    response = self.client.get(path, headers=headers)
+                    self.assertEqual(response.status_code, 401)
+                    self.assertEqual(response.headers["WWW-Authenticate"], "Bearer")
+        alice_auth = self.auth("alice", "alice-password-123")
+        self.assertEqual(
+            self.client.get("/api/speakers", headers=alice_auth).json(),
+            [{"id": 1, "name": "Speaker", "description": None, "icon_url": None}],
+        )
+        self.assertEqual(self.client.get("/api/speakers/1", headers=alice_auth).status_code, 200)
+        self.assertEqual(self.client.get("/api/speakers/2", headers=alice_auth).status_code, 404)
+
     def test_job_ownership_null_icon_and_capacity(self):
         conn = database.get_db()
         conn.execute("INSERT INTO speakers (id, name, icon_path) VALUES (1, 'Speaker', NULL)")
@@ -358,7 +377,8 @@ class SpeakerUploadTests(DatabaseCase):
         speaker_id = response.json()["id"]
         self.assertLess(speaker_id, 2**53)
         self.assertEqual(response.json()["name"], "新音色")
-        self.assertEqual(self.client.get("/api/speakers").json(), [response.json()])
+        alice = {"Authorization": f"Bearer {user.login('alice', 'alice-password-123')['access_token']}"}
+        self.assertEqual(self.client.get("/api/speakers", headers=alice).json(), [response.json()])
         audio, metadata = [call.kwargs for call in self.storage.put_object.call_args_list]
         self.assertEqual(audio["Key"], f"speaker/{speaker_id}/reference.wav")
         with wave.open(BytesIO(audio["Body"]), "rb") as wav:

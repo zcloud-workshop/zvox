@@ -81,6 +81,22 @@ describe('query lifecycle', () => {
     })
     expect(load).toHaveBeenCalledTimes(2)
   })
+  it('waits without a loader and drops loaded data when it is removed', async () => {
+    const load = vi.fn().mockResolvedValue('voices')
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useQuery(enabled ? load : null),
+      { initialProps: { enabled: false } },
+    )
+    expect(load).not.toHaveBeenCalled()
+    expect(result.current).toMatchObject({ data: undefined, loading: false })
+    rerender({ enabled: true })
+    expect(result.current.loading).toBe(true)
+    await act(async () => {})
+    expect(result.current.data).toBe('voices')
+    rerender({ enabled: false })
+    expect(result.current.data).toBeUndefined()
+    expect(load).toHaveBeenCalledOnce()
+  })
   it('locks duplicate submissions before React rerenders', async () => {
     let release!: () => void
     const mutation = vi.fn(

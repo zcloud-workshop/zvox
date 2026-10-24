@@ -117,6 +117,30 @@ describe('application flows', () => {
       text: '你好, 世界.',
     })
   })
+  it('hides voices from guests and loads them with the session after login', async () => {
+    const fetcher = mockApi()
+    const events = userEvent.setup()
+    mount()
+    const voices = screen.getByRole('region', { name: '选择音色' })
+    expect(
+      within(voices).getByRole('heading', { name: '登录后查看音色' }),
+    ).toBeInTheDocument()
+    expect(within(voices).queryByRole('button')).not.toBeInTheDocument()
+    expect(fetcher).not.toHaveBeenCalled()
+    await events.click(within(voices).getByRole('link', { name: '登录 ZVox' }))
+    await events.type(screen.getByLabelText('用户名'), 'creator')
+    await events.type(screen.getByLabelText('密码'), 'test-password-123')
+    await events.click(screen.getByRole('button', { name: '登录' }))
+    expect(
+      await screen.findByRole('button', { name: /清风/ }),
+    ).toBeInTheDocument()
+    const [, options] = fetcher.mock.calls.find(
+      ([path]) => path === '/api/speakers',
+    )!
+    expect(new Headers(options?.headers).get('Authorization')).toBe(
+      `Bearer ${session.access_token}`,
+    )
+  })
   it('validates whitespace and counts Unicode code points at the text limit', async () => {
     saveSession(session)
     mockApi()
