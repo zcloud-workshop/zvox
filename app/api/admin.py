@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile
 
 from app.api.users import require_admin
 from app.models.schemas import Speaker, WorkerStatus
@@ -34,6 +34,19 @@ async def create_speaker(
     except Exception as exc:
         logging.getLogger(__name__).exception("Could not create speaker")
         raise HTTPException(status_code=503, detail="Could not save speaker") from exc
+
+
+@router.delete("/speakers/{speaker_id}", status_code=204)
+async def delete_speaker(speaker_id: int):
+    """删除 Speaker 索引, 元数据和参考音频等 S3 资源."""
+    try:
+        deleted = await asyncio.to_thread(speaker_service.delete_speaker, speaker_id)
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Could not delete speaker")
+        raise HTTPException(status_code=503, detail="Could not delete speaker") from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Speaker '{speaker_id}' not found")
+    return Response(status_code=204)
 
 
 @router.post("/speakers/sync")

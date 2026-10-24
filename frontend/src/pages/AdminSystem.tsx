@@ -1,13 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   getModelStatus,
   getSyncStatus,
   startModel,
   startSync,
 } from '../api/admin'
-import type { ModelStatus, SyncStatus } from '../api/types'
+import { ApiError } from '../api/client'
+import { deleteSpeaker, listSpeakers } from '../api/speakers'
+import type { ModelStatus, Speaker, SyncStatus } from '../api/types'
+import { Avatar } from '../components/Avatar'
 import { ConfirmDialog } from '../components/ConfirmDialog'
-import { ErrorNotice, PageHeading } from '../components/Feedback'
+import { EmptyState, ErrorNotice, PageHeading } from '../components/Feedback'
 import { SpeakerUpload } from '../components/SpeakerUpload'
 import { useAction } from '../hooks/useAction'
 import { useQuery } from '../hooks/useQuery'
@@ -15,15 +18,28 @@ import { useQuery } from '../hooks/useQuery'
 const pollSync = (data: SyncStatus) => (data.running ? 2000 : 0)
 const pollModel = (data: ModelStatus) =>
   'downloading' in data && data.downloading ? 2000 : 0
+const speakerName = (speaker: Speaker) => speaker.name ?? `音色 ${speaker.id}`
 
 export function AdminSystem() {
   const sync = useQuery(getSyncStatus, pollSync)
   const model = useQuery(getModelStatus, pollModel)
+  const speakers = useQuery(listSpeakers)
   const syncAction = useAction()
   const modelAction = useAction()
+  const deleteAction = useAction()
   const [confirmSync, setConfirmSync] = useState(false)
+  const [removing, setRemoving] = useState<Speaker | null>(null)
   const [syncNotice, setSyncNotice] = useState('')
   const [modelNotice, setModelNotice] = useState('')
+  const [speakerNotice, setSpeakerNotice] = useState('')
+  const reloadSpeakers = speakers.reload
+  const syncLoaded = useRef(false)
+  useEffect(() => {
+    if (!sync.data) return
+    // 首次读取状态时列表已在加载, 之后每次查到导入结束都刷新音色列表.
+    if (syncLoaded.current && !sync.data.running) reloadSpeakers()
+    syncLoaded.current = true
+  }, [sync.data, reloadSpeakers])
   const downloading =
     !!model.data && 'downloading' in model.data && model.data.downloading
   const ready =
@@ -66,6 +82,20 @@ export function AdminSystem() {
       model.reload()
     })
   }
+  function removeSpeaker() {
+    if (!removing) return
+    void deleteAction.run(async () => {
+      try {
+        await deleteSpeaker(removing.id)
+      } catch (error) {
+        // 音色已被其他管理员删除或在导入时撤下, 刷新列表即可.
+        if (!(error instanceof ApiError && error.status === 404)) throw error
+      }
+      setRemoving(null)
+      setSpeakerNotice(`音色 "${speakerName(removing)}" 已删除.`)
+      speakers.reload()
+    })
+  }
   return (
     <>
       <PageHeading
@@ -73,7 +103,69 @@ export function AdminSystem() {
         title="系统管理"
         description="准备好音色与模型, 让创作顺畅发生."
       />
-      <SpeakerUpload />
+      <SpeakerUpload onCreated={speakers.reload} />
+      <section
+        className="panel speaker-manager"
+        aria-labelledby="speaker-list-title"
+      >
+        <div className="section-title">
+          <div>
+            <h2 id="speaker-list-title">音色列表</h2>
+            <span className="count-tag">
+              {speakers.data?.length ?? 0} 个音色
+            </span>
+          </div>
+          <button className="text-button" onClick={speakers.reload}>
+            刷新
+          </button>
+        </div>
+        {speakerNotice && (
+          <p className="notice success" role="status">
+            {speakerNotice}
+          </p>
+        )}
+        <ErrorNotice message={speakers.error} retry={speakers.reload} />
+        {speakers.loading ? (
+          <EmptyState title="正在加载音色" description="请稍候." />
+        ) : speakers.data?.length === 0 ? (
+          <EmptyState
+            title="暂无音色"
+            description="上传参考音频或导入音色后, 会显示在这里."
+          />
+        ) : null}
+        <div className="speaker-rows">
+          {speakers.data?.map((speaker) => (
+            <article className="user-row" key={speaker.id}>
+              <div className="user-identity">
+                <Avatar
+                  name={speakerName(speaker)}
+                  url={speaker.icon_url}
+                  id={speaker.id}
+                />
+                <div>
+                  <strong>{speakerName(speaker)}</strong>
+                  <span className="small muted">
+                    {speaker.description || '暂无描述'}
+                  </span>
+                </div>
+              </div>
+              <div className="user-actions">
+                <button
+                  className="text-button danger-text"
+                  aria-label={`删除音色 ${speakerName(speaker)}`}
+                  onClick={() => {
+                    deleteAction.clearError()
+                    setSpeakerNotice('')
+                    setRemoving(speaker)
+                  }}
+                >
+                  删除
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
       <div className="settings-grid">
         <section className="panel">
           <div className="section-title">
@@ -216,6 +308,20 @@ export function AdminSystem() {
             导入会更新音色索引, 并移除已从 S3 撤下的音色. 请确认资源已发布完整.
           </p>
           <ErrorNotice message={syncAction.error} />
+        </ConfirmDialog>
+      )}
+      {removing && (
+        <ConfirmDialog
+          title={`删除音色: ${speakerName(removing)}`}
+          busy={deleteAction.busy}
+          onClose={() => setRemoving(null)}
+          onConfirm={removeSpeaker}
+        >
+          <p>
+            删除后此音色将从工作台移除, 参考音频, 头像和元数据会从存储中删除,
+            无法恢复. 历史作品会保留, 使用此音色且尚未完成的任务可能失败.
+          </p>
+          <ErrorNotice message={deleteAction.error} />
         </ConfirmDialog>
       )}
     </>

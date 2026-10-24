@@ -433,6 +433,45 @@ class SpeakerUploadTests(DatabaseCase):
         self.assertEqual(self.storage.delete_object.call_count, 2)
         self.assertEqual(database.db_list_speakers(), [])
 
+    def test_delete_removes_speaker_objects_and_keeps_job_history(self):
+        speaker_id = self.upload().json()["id"]
+        root = f"speaker/{speaker_id}/"
+        owner = database.db_get_user_by_username("alice")
+        job = Job(id="history", speaker_id=speaker_id, text="hello", created_at="now")
+        self.assertTrue(database.db_insert_job(job, owner["id"], 10, 60, ""))
+        self.storage.get_paginator.return_value.paginate.return_value = [
+            {"Contents": [{"Key": f"{root}reference.wav"}]}
+        ]
+        alice = {"Authorization": f"Bearer {user.login('alice', 'alice-password-123')['access_token']}"}
+        self.assertEqual(self.client.delete(f"/api/admin/speakers/{speaker_id}", headers=alice).status_code, 403)
+        self.storage.delete_object.assert_not_called()
+
+        response = self.client.delete(f"/api/admin/speakers/{speaker_id}", headers=self.headers)
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(
+            [call.kwargs["Key"] for call in self.storage.delete_object.call_args_list],
+            [f"{root}vox-data.json", f"{root}reference.wav"],
+        )
+        self.storage.get_paginator.return_value.paginate.assert_called_once_with(Bucket=speaker.S3_BUCKET, Prefix=root)
+        self.assertIsNone(database.db_get_speaker(speaker_id))
+        self.assertEqual(self.client.get("/api/speakers").json(), [])
+        detail = self.client.get("/api/jobs/history", headers=alice).json()
+        self.assertEqual((detail["status"], detail["speaker_name"]), ("pending", None))
+        self.assertEqual(self.client.delete(f"/api/admin/speakers/{speaker_id}", headers=self.headers).status_code, 404)
+        self.assertEqual(self.storage.delete_object.call_count, 2)
+
+    def test_delete_keeps_speaker_when_metadata_cannot_be_removed(self):
+        speaker_id = self.upload().json()["id"]
+        self.storage.delete_object.side_effect = RuntimeError("storage unavailable")
+        with self.assertLogs("app.api.admin", level="ERROR"):
+            response = self.client.delete(f"/api/admin/speakers/{speaker_id}", headers=self.headers)
+        self.assertEqual(response.status_code, 503)
+        self.assertIsNotNone(database.db_get_speaker(speaker_id))
+        self.storage.delete_object.assert_called_once_with(
+            Bucket=speaker.S3_BUCKET, Key=f"speaker/{speaker_id}/vox-data.json"
+        )
+        self.storage.get_paginator.assert_not_called()
+
 
 class SyncTests(DatabaseCase):
     def setUp(self):
@@ -531,6 +570,84 @@ class SyncTests(DatabaseCase):
             for bad in ("https://example.com/a.wav", "/tmp/a.wav", "voices/2/../a.wav", "voices/3/a.wav"):
                 with self.assertRaises(ValueError):
                     speaker.resolve_speaker_key(bad, 2)
+
+
+class SpeakerDeleteTests(unittest.TestCase):
+    def setUp(self):
+        self.objects = {
+            "speaker/1/vox-data.json", "speaker/1/reference.wav", "speaker/1/icon.png",
+            "speaker/10/vox-data.json", "speaker/10/reference.wav",
+        }
+        self.calls = []
+
+        def paginate(*, Bucket, Prefix):
+            self.calls.append(("list", Prefix))
+            yield {"Contents": [{"Key": key} for key in sorted(self.objects) if key.startswith(Prefix)]}
+
+        def delete_object(*, Bucket, Key):
+            self.calls.append(("delete", Key))
+            self.objects.discard(Key)
+
+        self.storage = SimpleNamespace(
+            get_paginator=lambda name: SimpleNamespace(paginate=paginate), delete_object=delete_object
+        )
+        for name, value in (
+            ("s3", self.storage),
+            ("db_get_speaker", Mock(return_value={"id": 1})),
+            ("db_delete_speaker", Mock(side_effect=lambda speaker_id: self.calls.append(("index", speaker_id)))),
+        ):
+            patcher = patch.object(speaker, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_removes_metadata_before_index_and_only_its_own_objects(self):
+        self.assertTrue(speaker.delete_speaker(1))
+        self.assertEqual(self.calls, [
+            ("delete", "speaker/1/vox-data.json"),
+            ("index", 1),
+            ("list", "speaker/1/"),
+            ("delete", "speaker/1/icon.png"),
+            ("delete", "speaker/1/reference.wav"),
+        ])
+        self.assertEqual(self.objects, {"speaker/10/vox-data.json", "speaker/10/reference.wav"})
+
+    def test_missing_speaker_leaves_storage_untouched(self):
+        speaker.db_get_speaker.return_value = None
+        self.assertFalse(speaker.delete_speaker(1))
+        self.assertEqual(self.calls, [])
+
+    def test_metadata_failure_keeps_index(self):
+        self.storage.delete_object = Mock(side_effect=RuntimeError("storage unavailable"))
+        with self.assertRaises(RuntimeError):
+            speaker.delete_speaker(1)
+        speaker.db_delete_speaker.assert_not_called()
+
+    def test_leftover_cleanup_failure_is_logged_after_index_removal(self):
+        self.storage.get_paginator = Mock(side_effect=RuntimeError("list failed"))
+        with self.assertLogs("app.services.speaker", level="ERROR"):
+            self.assertTrue(speaker.delete_speaker(1))
+        self.assertEqual(self.calls, [("delete", "speaker/1/vox-data.json"), ("index", 1)])
+
+    def test_endpoint_requires_admin_and_maps_results(self):
+        client = TestClient(app)
+        self.addCleanup(client.close)
+        headers = {"Authorization": "Bearer token"}
+        with patch.object(speaker, "delete_speaker", return_value=True) as delete:
+            self.assertEqual(client.delete("/api/admin/speakers/1").status_code, 401)
+            with patch.object(user, "get_user_for_token", return_value={"role": "user"}):
+                self.assertEqual(client.delete("/api/admin/speakers/1", headers=headers).status_code, 403)
+            delete.assert_not_called()
+            with patch.object(user, "get_user_for_token", return_value={"role": "admin"}):
+                response = client.delete("/api/admin/speakers/1", headers=headers)
+                self.assertEqual((response.status_code, response.content), (204, b""))
+                delete.assert_called_once_with(1)
+                delete.return_value = False
+                self.assertEqual(client.delete("/api/admin/speakers/1", headers=headers).status_code, 404)
+                delete.side_effect = RuntimeError("private storage error")
+                with self.assertLogs("app.api.admin", level="ERROR"):
+                    response = client.delete("/api/admin/speakers/1", headers=headers)
+                self.assertEqual(response.status_code, 503)
+                self.assertNotIn("private storage error", response.text)
 
 
 class ModelAndWorkerTests(unittest.TestCase):

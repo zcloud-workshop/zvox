@@ -494,6 +494,9 @@ describe('application flows', () => {
     expect(body.get('prompt_text')).toBe('你好世界')
     expect((body.get('audio') as File).name).toBe('voice.wav')
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:preview')
+    expect(
+      await screen.findByRole('button', { name: '删除音色 我的声音' }),
+    ).toBeInTheDocument()
     await events.click(screen.getByRole('link', { name: '前往工作台' }))
     await events.click(await screen.findByRole('button', { name: /我的声音/ }))
     expect(screen.getByRole('button', { name: /我的声音/ })).toHaveAttribute('aria-pressed', 'true')
@@ -524,5 +527,102 @@ describe('application flows', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('20 MB')
     expect(screen.getByRole('button', { name: '上传并添加音色' })).toBeDisabled()
     expect(fetcher.mock.calls.filter(([path]) => path === '/api/admin/speakers')).toHaveLength(1)
+  })
+  it('deletes a voice only after confirmation and refreshes the list', async () => {
+    currentUser = { ...user, role: 'admin' }
+    saveSession(session)
+    let deleted = false
+    const fetcher = mockApi((path, options) => {
+      if (path === '/api/admin/speakers/1' && options?.method === 'DELETE') {
+        deleted = true
+        return new Response(null, { status: 204 })
+      }
+      if (path === '/api/speakers' && deleted) return Response.json([])
+    })
+    const deletes = () =>
+      fetcher.mock.calls.filter(([, options]) => options?.method === 'DELETE')
+    mount('/admin/system')
+    await userEvent.click(
+      await screen.findByRole('button', { name: '删除音色 清风' }),
+    )
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveTextContent('历史作品会保留')
+    expect(deletes()).toHaveLength(0)
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: '确认操作' }),
+    )
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      '音色 "清风" 已删除',
+    )
+    expect(await screen.findByText('暂无音色')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(deletes()).toHaveLength(1)
+  })
+  it('keeps a failed deletion in the dialog and treats an already removed voice as deleted', async () => {
+    currentUser = { ...user, role: 'admin' }
+    saveSession(session)
+    const results = [
+      Response.json({ detail: 'Could not delete speaker' }, { status: 503 }),
+      Response.json({ detail: "Speaker '1' not found" }, { status: 404 }),
+    ]
+    let removed = false
+    const fetcher = mockApi((path, options) => {
+      if (path === '/api/admin/speakers/1' && options?.method === 'DELETE') {
+        const response = results.shift()!
+        removed = response.status === 404
+        return response
+      }
+      if (path === '/api/speakers' && removed) return Response.json([])
+    })
+    mount('/admin/system')
+    await userEvent.click(
+      await screen.findByRole('button', { name: '删除音色 清风' }),
+    )
+    const confirm = within(screen.getByRole('dialog')).getByRole('button', {
+      name: '确认操作',
+    })
+    await userEvent.click(confirm)
+    expect(
+      await within(screen.getByRole('dialog')).findByRole('alert'),
+    ).toHaveTextContent('服务暂时不可用')
+    expect(
+      screen.getByRole('button', { name: '删除音色 清风' }),
+    ).toBeInTheDocument()
+    await userEvent.click(confirm)
+    expect(await screen.findByRole('status')).toHaveTextContent('已删除')
+    expect(await screen.findByText('暂无音色')).toBeInTheDocument()
+    expect(
+      fetcher.mock.calls.filter(([, options]) => options?.method === 'DELETE'),
+    ).toHaveLength(2)
+  })
+  it('refreshes the voice list once an import finishes', async () => {
+    currentUser = { ...user, role: 'admin' }
+    saveSession(session)
+    let submitted = false
+    const fetcher = mockApi((path) => {
+      if (path === '/api/admin/speakers/sync') {
+        submitted = true
+        return Response.json({ status: 'submitted' })
+      }
+      if (path === '/api/admin/speakers/sync/status' && submitted)
+        return Response.json({
+          running: false,
+          last_result: { imported: 2, deleted: 0, errors: [] },
+        })
+      if (path === '/api/speakers' && submitted)
+        return Response.json([speaker, { ...speaker, id: 2, name: '晚风' }])
+    })
+    mount('/admin/system')
+    await screen.findByRole('button', { name: '删除音色 清风' })
+    const importButton = screen.getByRole('button', { name: '导入音色' })
+    await waitFor(() => expect(importButton).toBeEnabled())
+    expect(
+      fetcher.mock.calls.filter(([path]) => path === '/api/speakers'),
+    ).toHaveLength(1)
+    await userEvent.click(importButton)
+    await userEvent.click(screen.getByRole('button', { name: '确认操作' }))
+    expect(
+      await screen.findByRole('button', { name: '删除音色 晚风' }),
+    ).toBeInTheDocument()
   })
 })

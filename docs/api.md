@@ -90,6 +90,18 @@ GET /api/speakers/1
 
 音频需为单声道或双声道, 采样率 8-192 kHz. 服务校验实际文件内容, 转为单声道 PCM WAV, 上传参考音频及 `vox-data.json` 后写入索引. 成功返回 `201` 和 Speaker 信息, 新音色立即对所有用户可见, 后续 S3 导入仍会保留. 无效音频返回 `400`, 超出文件大小返回 `413`, 字段校验失败返回 `422`, 保存失败返回 `503`. Web 入口位于系统管理的 "添加音频".
 
+### 删除 Speaker
+
+```text
+DELETE /api/admin/speakers/{speaker_id}
+```
+
+仅管理员可访问. 服务与上传和导入共用写入锁, 先删除 `{S3_SPEAKER_PREFIX}{speaker_id}/vox-data.json`, 再删除 PostgreSQL 索引, 最后删除该前缀下的其余对象, 如参考音频和头像. 删除元数据后, 后续导入不会恢复该 Speaker.
+
+成功返回 `204`, Speaker 不在索引中返回 `404`. 元数据或索引删除失败返回 `503`, 音色仍可使用, 可重试删除. 剩余对象清理失败只记录日志, 存储桶可能留下无引用的对象.
+
+历史任务保留, 列表和详情中的 `speaker_name` 与 `speaker_icon_url` 为 `null`. 使用该 Speaker 的排队任务会失败. Web 入口位于系统管理的 "音色列表".
+
 ### 导入 Speaker 元数据
 
 从 S3 的 `S3_SPEAKER_PREFIX` 下导入 `{id}/vox-data.json`, 更新和删除 PostgreSQL 中的 Speaker 索引. 不上传本地文件, 也不全量下载音频或头像. 发布资源时先上传音频和头像, 再上传 JSON, 最后触发导入:

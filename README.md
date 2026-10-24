@@ -5,7 +5,7 @@
 ## 功能
 
 - 语音生成: 选择音色并提交文本, 查看排队和执行状态, 播放生成的 WAV 音频.
-- 音色管理: 管理员上传参考音频或通过浏览器录音创建公共音色, 也可从 S3 批量导入音色元数据.
+- 音色管理: 管理员上传参考音频或通过浏览器录音创建公共音色, 也可从 S3 批量导入音色元数据, 或删除不再使用的音色.
 - 任务历史: 普通用户查看自己的任务, 管理员查看全部任务, 支持分页, 错误信息和执行耗时查询.
 - 账号管理: 登录, 退出和修改密码, 管理员创建用户, 修改角色, 启停账号及重置密码.
 - 运行管理: 自动准备模型, 下载状态查询与失败重试, 提供健康检查和后台任务 Worker 状态接口.
@@ -142,6 +142,8 @@ AWS 模式使用 boto3 默认凭证链, 例如 `AWS_ACCESS_KEY_ID` 和 `AWS_SECR
 
 管理员通过网页创建音色时, 服务上传参考音频和 `vox-data.json` 到 S3, 随后写入 PostgreSQL 索引, 保存成功后即可使用.
 
+管理员可在系统管理的 "音色列表" 中删除音色. 服务先删除 `vox-data.json`, 再移除 PostgreSQL 索引, 最后清理该音色前缀下的参考音频和头像, 之后的导入不会恢复已删除的音色. 历史任务保留原文本和音色 ID, 使用该音色的排队任务会失败.
+
 已有音色资源可通过管理员的 "导入 Speaker" 功能发布. 先上传音频和可选头像, 再上传引用这些对象的 `vox-data.json`, 最后触发导入. 默认对象布局如下:
 
 ```text
@@ -172,7 +174,7 @@ output/{job_id}/
 | 退出登录 | `POST /api/auth/logout` | 登录用户 |
 | 创建和查询任务 | `POST /api/jobs`, `GET /api/jobs`, `GET /api/jobs/{job_id}` | 登录用户 |
 | 用户管理 | `/api/admin/users` 及用户修改, 密码重置接口 | 管理员 |
-| 创建和导入音色 | `POST /api/admin/speakers`, `POST /api/admin/speakers/sync` | 管理员 |
+| 创建, 删除和导入音色 | `POST /api/admin/speakers`, `DELETE /api/admin/speakers/{speaker_id}`, `POST /api/admin/speakers/sync` | 管理员 |
 | 查看导入结果 | `GET /api/admin/speakers/sync/status` | 管理员 |
 | 模型状态与下载 | `GET /api/admin/model/status`, `GET /api/admin/model` | 管理员 |
 | Worker 状态 | `GET /api/admin/worker` | 管理员 |

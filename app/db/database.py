@@ -133,6 +133,11 @@ def db_insert_speaker(speaker_id: int, name: str, description: str, prompt_text:
         )
 
 
+def db_delete_speaker(speaker_id: int):
+    with get_db() as conn:
+        conn.execute("DELETE FROM speakers WHERE id=%s", (speaker_id,))
+
+
 def db_list_speakers() -> list[dict]:
     """查询所有 speaker."""
     with get_db() as conn:

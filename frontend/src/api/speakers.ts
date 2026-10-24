@@ -6,3 +6,6 @@ export const listSpeakers = (signal?: AbortSignal) =>
 
 export const createSpeaker = (body: FormData) =>
   request<Speaker>('/admin/speakers', { method: 'POST', body })
+
+export const deleteSpeaker = (id: number) =>
+  request<void>(`/admin/speakers/${id}`, { method: 'DELETE' })

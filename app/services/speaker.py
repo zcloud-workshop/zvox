@@ -10,7 +10,7 @@ import soundfile as sf
 
 from app.core.config import S3_BUCKET, S3_SPEAKER_PREFIX
 from app.core.s3 import s3
-from app.db.database import db_get_speaker, db_insert_speaker, db_list_speakers
+from app.db.database import db_delete_speaker, db_get_speaker, db_insert_speaker, db_list_speakers
 from app.models.schemas import Speaker
 from app.tools.url import build_icon_url
 
@@ -87,6 +87,28 @@ def create_speaker(name: str, description: str, prompt_text: str, audio: BinaryI
                     break
             raise
     return Speaker(id=speaker_id, name=name, description=description)
+
+
+def delete_speaker(speaker_id: int) -> bool:
+    """删除 Speaker 索引及其前缀下的 S3 资源, 不存在时返回 False."""
+    root = f"{S3_SPEAKER_PREFIX.rstrip('/')}/{speaker_id}/"
+    with speaker_write_lock:
+        if not db_get_speaker(speaker_id):
+            return False
+        # 先删除元数据, 避免后续导入恢复已删除的音色.
+        s3.delete_object(Bucket=S3_BUCKET, Key=f"{root}vox-data.json")
+        db_delete_speaker(speaker_id)
+        try:
+            keys = [
+                obj["Key"]
+                for page in s3.get_paginator("list_objects_v2").paginate(Bucket=S3_BUCKET, Prefix=root)
+                for obj in page.get("Contents", [])
+            ]
+            for key in keys:
+                s3.delete_object(Bucket=S3_BUCKET, Key=key)
+        except Exception:
+            logger.exception("Could not remove speaker objects under %s", root)
+    return True
 
 
 def resolve_speaker_key(value: str, speaker_id: int) -> str:

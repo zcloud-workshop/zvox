@@ -7,7 +7,7 @@ import { ErrorNotice } from './Feedback'
 
 const readingText = '清晨的阳光洒在窗前, 微风轻轻吹过树梢, 我用温暖的声音迎接美好的一天.'
 
-export function SpeakerUpload() {
+export function SpeakerUpload({ onCreated }: { onCreated?: () => void }) {
   const action = useAction()
   const form = useRef<HTMLFormElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -56,6 +56,7 @@ export function SpeakerUpload() {
       setPromptText('')
       setRecorded(false)
       setNotice(`音色 "${speaker.name}" 已添加, 可在工作台选择使用.`)
+      onCreated?.()
     })
   }
 

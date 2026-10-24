@@ -805,8 +805,13 @@
   color: var(--accent);
   font-size: 12px;
 }
-.speaker-upload {
+.speaker-upload,
+.speaker-manager {
   margin-bottom: 24px;
+}
+.speaker-rows {
+  max-height: 460px;
+  overflow-y: auto;
 }
 .upload-fields {
   display: grid;
