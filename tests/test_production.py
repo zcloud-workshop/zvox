@@ -1,10 +1,11 @@
 import asyncio
+import hashlib
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import DEFAULT, Mock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -98,6 +99,60 @@ class LoginRateLimitTests(unittest.TestCase):
             payload = {"username": "alice", "password": "correct"}
             self.assertEqual(client.post("/api/auth/login", json=payload).json(), result)
             self.assertEqual(client.post("/api/auth/login", json=payload).status_code, 429)
+
+
+class ApiKeyAuthTests(unittest.TestCase):
+    def test_prefixed_tokens_check_api_keys_before_sessions(self):
+        key_user = {"id": 1, "role": "user", "api_key_id": 7}
+        session_user = {"id": 1, "role": "user"}
+        for token, key_result, expected in (
+            ("zvox_key", key_user, key_user),
+            ("zvox_session", None, session_user),  # 登录 Token 恰好带有相同前缀
+            ("session", None, session_user),
+        ):
+            with self.subTest(token=token), patch.object(
+                user, "db_get_api_key_user", return_value=key_result
+            ) as by_key, patch.object(user, "db_get_session_user", return_value=session_user) as by_session:
+                self.assertEqual(user.get_user_for_token(token), expected)
+                self.assertEqual(by_key.called, token.startswith("zvox_"))
+                self.assertEqual(by_session.called, expected is session_user)
+                if by_key.called:
+                    key_hash, now, touch_before = by_key.call_args.args
+                    self.assertEqual(key_hash, hashlib.sha256(token.encode()).hexdigest())
+                    self.assertEqual(
+                        datetime.fromisoformat(now) - datetime.fromisoformat(touch_before), timedelta(minutes=1)
+                    )
+
+    def test_api_keys_cannot_manage_credentials_or_log_out(self):
+        app = FastAPI()
+        app.include_router(users_router)
+        session_user = {"id": 1, "username": "alice", "role": "user", "is_active": 1, "created_at": "now"}
+        headers = {"Authorization": "Bearer zvox_key"}
+        with TestClient(app) as client, patch.multiple(
+            user, list_api_keys=DEFAULT, create_api_key=DEFAULT, revoke_api_key=DEFAULT, change_password=DEFAULT,
+            logout=DEFAULT,
+        ) as services:
+            services["list_api_keys"].return_value = []
+            with patch.object(user, "get_user_for_token", return_value=session_user):
+                self.assertEqual(client.get("/api/users/me/api-keys", headers=headers).json(), [])
+            services["list_api_keys"].reset_mock()
+            with patch.object(user, "get_user_for_token", return_value={**session_user, "api_key_id": 7}):
+                response = client.get("/api/users/me", headers=headers)
+                self.assertEqual(response.status_code, 200)
+                self.assertNotIn("api_key_id", response.json())
+                for method, path, body in (
+                    ("GET", "/api/users/me/api-keys", None),
+                    ("POST", "/api/users/me/api-keys", {"name": "derived"}),
+                    ("DELETE", "/api/users/me/api-keys/1", None),
+                    ("POST", "/api/users/me/password", {"current_password": "old-password", "new_password": "new-password"}),
+                    ("POST", "/api/auth/logout", None),
+                ):
+                    with self.subTest(method=method, path=path):
+                        response = client.request(method, path, headers=headers, json=body)
+                        self.assertEqual(response.status_code, 403)
+                        self.assertEqual(response.json()["detail"], "Login session required")
+            for service in services.values():
+                service.assert_not_called()
 
 
 class HealthTests(unittest.TestCase):

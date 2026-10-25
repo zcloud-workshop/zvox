@@ -109,3 +109,22 @@ class ChangePasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=128)
+
+
+class CreateApiKeyRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64)
+    expires_in_days: int | None = Field(default=None, ge=1, le=3650)  # 为空表示永不过期
+
+
+class ApiKeyPublic(BaseModel):
+    id: int
+    name: str
+    prefix: str
+    created_at: str
+    expires_at: str | None
+    last_used_at: str | None
+
+
+# 创建响应附带完整 Key, 之后无法再次查看
+class CreateApiKeyResponse(ApiKeyPublic):
+    key: str

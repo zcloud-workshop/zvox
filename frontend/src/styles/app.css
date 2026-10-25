@@ -872,6 +872,63 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+.api-key-panel {
+  grid-column: 1 / -1;
+}
+.api-key-created p {
+  margin-bottom: 10px;
+}
+.api-key-created input {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+  border-color: #dcebe3;
+}
+.api-key-created .button-row {
+  align-items: center;
+  margin-top: 12px;
+}
+.api-key-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px auto;
+  gap: 15px;
+  align-items: end;
+  margin: 24px 0;
+}
+.api-key-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  gap: 18px;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  padding: 18px 0;
+}
+.api-key-name {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.api-key-name strong {
+  overflow-wrap: anywhere;
+}
+.api-key-name code {
+  color: var(--muted);
+}
+.api-key-row dl {
+  display: grid;
+  grid-template-rows: auto auto;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 4px 15px;
+  margin: 0;
+  font-size: 12px;
+}
+.api-key-row dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+.api-key-row dd {
+  margin: 0;
+}
 .users-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(265px, 1fr);

@@ -25,6 +25,9 @@ const translations: Record<string, string> = {
   'Username already exists': '用户名已存在.',
   'Cannot disable or demote the last active admin':
     '不能停用或降级最后一位管理员.',
+  'API key name is required': '请输入 Key 名称.',
+  'API key limit reached': 'API Key 数量已达上限, 请先撤销不再使用的 Key.',
+  'API key not found': 'API Key 不存在或已被撤销.',
 }
 const fields: Record<string, string> = {
   username: '用户名',

@@ -1,13 +1,15 @@
 import asyncio
+import hashlib
 import json
 import os
 import tempfile
 import threading
+import time
 import unittest
 import wave
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -192,6 +194,114 @@ class UserApiTests(DatabaseCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["detail"], "Username already exists")
 
+    def test_api_key_lifecycle(self):
+        conn = database.get_db()
+        conn.execute("INSERT INTO speakers (id, name) VALUES (1, 'Speaker')")
+        conn.commit()
+        conn.close()
+        alice_auth = self.auth("alice", "alice-password-123")
+        response = self.client.post("/api/users/me/api-keys", headers=alice_auth, json={"name": "  CI  "})
+        self.assertEqual(response.status_code, 201, response.text)
+        created = response.json()
+        key = created.pop("key")
+        self.assertTrue(key.startswith("zvox_"))
+        self.assertEqual(created["prefix"], key[:13])
+        self.assertEqual((created["name"], created["expires_at"], created["last_used_at"]), ("CI", None, None))
+        self.assertEqual(self.client.get("/api/users/me/api-keys", headers=alice_auth).json(), [created])
+        with database.get_db() as conn:
+            row = conn.execute("SELECT * FROM api_keys").fetchone()
+        self.assertEqual(row["key_hash"], hashlib.sha256(key.encode()).hexdigest())
+        self.assertNotIn(key, json.dumps(row))
+
+        key_auth = {"Authorization": f"Bearer {key}"}
+        self.assertEqual(self.client.get("/api/users/me", headers=key_auth).json()["username"], "alice")
+        self.assertEqual(self.client.get("/api/speakers", headers=key_auth).status_code, 200)
+        response = self.client.post("/api/jobs", headers=key_auth, json={"speaker_id": 1, "text": "hello"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(database.db_get_job(response.json()["job_id"])["user_id"], self.alice["id"])
+        self.assertEqual(self.client.get("/api/admin/users", headers=key_auth).status_code, 403)
+        response = self.client.post("/api/users/me/api-keys", headers=key_auth, json={"name": "derived"})
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Login session required")
+        [listed] = self.client.get("/api/users/me/api-keys", headers=alice_auth).json()
+        self.assertIsNotNone(listed["last_used_at"])
+
+        self.assertEqual(self.client.delete(f"/api/users/me/api-keys/{created['id']}", headers=alice_auth).status_code, 204)
+        response = self.client.get("/api/users/me", headers=key_auth)
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.headers["WWW-Authenticate"], "Bearer")
+        self.assertEqual(self.client.delete(f"/api/users/me/api-keys/{created['id']}", headers=alice_auth).status_code, 404)
+
+    def test_api_key_validation_expiry_ownership_and_limit(self):
+        alice_auth = self.auth("alice", "alice-password-123")
+        for body, status in (
+            ({"name": "   "}, 400),
+            ({"name": ""}, 422),
+            ({"name": "x" * 65}, 422),
+            ({"name": "CI", "expires_in_days": 0}, 422),
+            ({"name": "CI", "expires_in_days": 3651}, 422),
+        ):
+            with self.subTest(body=body):
+                response = self.client.post("/api/users/me/api-keys", headers=alice_auth, json=body)
+                self.assertEqual(response.status_code, status, response.text)
+        response = self.client.post("/api/users/me/api-keys", headers=alice_auth, json={"name": "temp", "expires_in_days": 30})
+        self.assertEqual(response.status_code, 201, response.text)
+        temp = response.json()
+        self.assertEqual(
+            datetime.fromisoformat(temp["expires_at"]) - datetime.fromisoformat(temp["created_at"]), timedelta(days=30)
+        )
+        temp_auth = {"Authorization": f"Bearer {temp['key']}"}
+        self.assertEqual(self.client.get("/api/users/me", headers=temp_auth).status_code, 200)
+        with database.get_db() as conn:
+            conn.execute("UPDATE api_keys SET expires_at='2000-01-01T00:00:00+00:00' WHERE id=%s", (temp["id"],))
+        self.assertEqual(self.client.get("/api/users/me", headers=temp_auth).status_code, 401)
+
+        bob_auth = self.auth("bob", "bob-password-123")
+        self.assertEqual(self.client.delete(f"/api/users/me/api-keys/{temp['id']}", headers=bob_auth).status_code, 404)
+        self.assertEqual(self.client.get("/api/users/me/api-keys", headers=bob_auth).json(), [])
+        # 已过期的 Key 仍占用名额, 撤销后才能释放.
+        with patch.object(user, "MAX_API_KEYS_PER_USER", 2):
+            response = self.client.post("/api/users/me/api-keys", headers=alice_auth, json={"name": "second"})
+            self.assertEqual(response.status_code, 201, response.text)
+            response = self.client.post("/api/users/me/api-keys", headers=alice_auth, json={"name": "third"})
+            self.assertEqual(response.status_code, 409)
+            self.assertEqual(response.json()["detail"], "API key limit reached")
+        self.assertEqual(len(self.client.get("/api/users/me/api-keys", headers=alice_auth).json()), 2)
+
+        admin_auth = self.auth("admin", "admin-password-123")
+        admin_key = self.client.post("/api/users/me/api-keys", headers=admin_auth, json={"name": "ops"}).json()["key"]
+        self.assertEqual(self.client.get("/api/admin/users", headers={"Authorization": f"Bearer {admin_key}"}).status_code, 200)
+
+    def test_credential_changes_revoke_api_keys(self):
+        admin_auth = self.auth("admin", "admin-password-123")
+        alice_id = self.alice["id"]
+        for change, method, path, body in (
+            ("password", "POST", "/api/users/me/password",
+             {"current_password": "alice-password-123", "new_password": "alice-password-123"}),
+            ("reset", "POST", f"/api/admin/users/{alice_id}/password", {"password": "alice-password-123"}),
+            ("role", "PATCH", f"/api/admin/users/{alice_id}", {"role": "admin"}),
+            ("deactivate", "PATCH", f"/api/admin/users/{alice_id}", {"is_active": False}),
+        ):
+            with self.subTest(change=change):
+                alice_auth = self.auth("alice", "alice-password-123")
+                response = self.client.post("/api/users/me/api-keys", headers=alice_auth, json={"name": change})
+                key_auth = {"Authorization": f"Bearer {response.json()['key']}"}
+                self.assertEqual(self.client.get("/api/users/me", headers=key_auth).status_code, 200)
+                response = self.client.request(
+                    method, path, headers=alice_auth if change == "password" else admin_auth, json=body
+                )
+                self.assertIn(response.status_code, (200, 204), response.text)
+                self.assertEqual(self.client.get("/api/users/me", headers=key_auth).status_code, 401)
+                self.assertEqual(database.db_list_api_keys(alice_id), [])
+
+    def test_api_key_creation_requires_the_callers_live_session(self):
+        token = user.login("alice", "alice-password-123")["access_token"]
+        bob_token = user.login("bob", "bob-password-123")["access_token"]
+        self.assertIsNone(user.create_api_key(self.alice["id"], bob_token, "other session", None))
+        user.logout(token)
+        self.assertIsNone(user.create_api_key(self.alice["id"], token, "revoked session", None))
+        self.assertEqual(database.db_list_api_keys(self.alice["id"]), [])
+
 
 class PostgreSQLConcurrencyTests(DatabaseCase):
     def test_concurrent_job_submissions_respect_both_limits(self):
@@ -230,6 +340,42 @@ class PostgreSQLConcurrencyTests(DatabaseCase):
         with ThreadPoolExecutor(max_workers=2) as pool:
             self.assertEqual(sum(pool.map(disable, admins)), 1)
         self.assertEqual(sum(row["is_active"] for row in database.db_list_users()), 1)
+
+    def test_concurrent_api_key_creation_respects_limit(self):
+        owner = user.create_user("owner", "owner-password-123")
+        token = user.login("owner", "owner-password-123")["access_token"]
+        barrier = threading.Barrier(5)
+
+        def create(index):
+            barrier.wait(timeout=10)
+            try:
+                return user.create_api_key(owner["id"], token, f"key-{index}", None) is not None
+            except ValueError as exc:
+                self.assertEqual(str(exc), "API key limit reached")
+                return False
+
+        with patch.object(user, "MAX_API_KEYS_PER_USER", 1), ThreadPoolExecutor(max_workers=5) as pool:
+            self.assertEqual(sum(pool.map(create, range(5))), 1)
+        self.assertEqual(len(database.db_list_api_keys(owner["id"])), 1)
+
+    def test_api_key_creation_waits_for_credential_revocation(self):
+        owner = user.create_user("owner", "owner-password-123")
+        token = user.login("owner", "owner-password-123")["access_token"]
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with database.get_db() as conn:
+                # 模拟进行中的改密事务: 持有用户行锁, 随后删除会话.
+                conn.execute("SELECT id FROM users WHERE id=%s FOR UPDATE", (owner["id"],))
+                created = pool.submit(user.create_api_key, owner["id"], token, "race", None)
+                for _ in range(100):
+                    with database.get_db() as monitor:
+                        if monitor.execute("SELECT COUNT(*) AS count FROM pg_locks WHERE NOT granted").fetchone()["count"]:
+                            break
+                    time.sleep(0.05)
+                else:
+                    self.fail("API key creation did not wait for the user row lock")
+                conn.execute("DELETE FROM sessions WHERE user_id=%s", (owner["id"],))
+            self.assertIsNone(created.result(timeout=10))
+        self.assertEqual(database.db_list_api_keys(owner["id"]), [])
 
 
 class JobRecoveryTests(DatabaseCase):
