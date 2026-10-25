@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, messageOf } from '../api/client'
 
-// load 为 null 时不发起请求, 也不返回之前加载的数据.
 export function useQuery<T>(
-  load: ((signal: AbortSignal) => Promise<T>) | null,
+  load: (signal: AbortSignal) => Promise<T>,
   poll?: (data: T) => number,
 ) {
   const [data, setData] = useState<T>()
@@ -13,7 +12,6 @@ export function useQuery<T>(
   const reload = useCallback(() => setVersion((value) => value + 1), [])
 
   useEffect(() => {
-    if (!load) return
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     let busy = false
@@ -63,6 +61,5 @@ export function useQuery<T>(
     }
   }, [load, poll, version])
 
-  if (!load) return { data: undefined, error: '', loading: false, reload }
   return { data, error, loading, reload }
 }

@@ -118,22 +118,28 @@ describe('application flows', () => {
       text: '你好, 世界.',
     })
   })
-  it('hides voices from guests and loads them with the session after login', async () => {
-    const fetcher = mockApi()
+  it('sends guests to a login page without the sidebar and opens the studio right after login', async () => {
+    // 登录后的会话校验一直未返回, 工作台也应直接可用.
+    const fetcher = mockApi((path) =>
+      path === '/api/users/me' ? new Promise<Response>(() => {}) : undefined,
+    )
     const events = userEvent.setup()
     mount()
-    const voices = screen.getByRole('region', { name: '选择音色' })
     expect(
-      within(voices).getByRole('heading', { name: '登录后查看音色' }),
+      await screen.findByRole('heading', { name: '欢迎回来' }),
     ).toBeInTheDocument()
-    expect(within(voices).queryByRole('button')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('navigation', { name: '主导航' }),
+    ).not.toBeInTheDocument()
     expect(fetcher).not.toHaveBeenCalled()
-    await events.click(within(voices).getByRole('link', { name: '登录 ZVox' }))
     await events.type(screen.getByLabelText('用户名'), 'creator')
     await events.type(screen.getByLabelText('密码'), 'test-password-123')
     await events.click(screen.getByRole('button', { name: '登录' }))
     expect(
       await screen.findByRole('button', { name: /清风/ }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('navigation', { name: '主导航' }),
     ).toBeInTheDocument()
     const [, options] = fetcher.mock.calls.find(
       ([path]) => path === '/api/speakers',

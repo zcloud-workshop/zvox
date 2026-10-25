@@ -32,74 +32,79 @@ export function Login() {
     })
   }
   return (
-    <div className="login-layout">
-      <div className="login-story">
-        <p className="eyebrow">A SPACE FOR YOUR VOICE</p>
-        <h1>
-          每一段文字,
-          <br />
-          都值得被听见.
-        </h1>
-        <p>
-          从一个想法, 到一段鲜活的声音.
-          <br />
-          登录 ZVox, 开始你的下一次创作.
-        </p>
-        <div className="wave-art" aria-hidden="true">
-          {Array.from({ length: 31 }, (_, index) => (
-            <i
-              key={index}
-              style={{
-                height: `${16 + Math.sin(index * 0.8) ** 2 * (90 - Math.abs(index - 15) * 4)}%`,
-              }}
-            />
-          ))}
-        </div>
-        <span className="story-caption">WORDS INTO VOICE.</span>
-      </div>
-      <section className="panel login-panel">
-        <div className="brand-mark">
-          <Icon name="studio" />
-        </div>
-        <h2>欢迎回来</h2>
-        <p className="muted">登录你的账号, 继续创作.</p>
-        {auth.notice && (
-          <p className="notice" role="status">
-            {auth.notice}
+    <main className="auth-page">
+      <div className="login-layout">
+        <div className="login-story">
+          <p className="eyebrow">A SPACE FOR YOUR VOICE</p>
+          <h1>
+            每一段文字,
+            <br />
+            都值得被听见.
+          </h1>
+          <p>
+            从一个想法, 到一段鲜活的声音.
+            <br />
+            登录 ZVox, 开始你的下一次创作.
           </p>
-        )}
-        <form onSubmit={submit} className="form-stack">
-          <label>
-            用户名
-            <input
-              autoComplete="username"
-              required
-              maxLength={32}
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              placeholder="输入用户名"
-            />
-          </label>
-          <label>
-            密码
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              maxLength={128}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="输入密码"
-            />
-          </label>
-          <ErrorNotice message={action.error} />
-          <button className="button primary full-width" disabled={action.busy}>
-            {action.busy ? '正在登录...' : '登录'}
-            <Icon name="arrow" />
-          </button>
-        </form>
-        <p className="small muted login-help">还没有账号? 请联系管理员创建.</p>
-      </section>
-    </div>
+          <div className="wave-art" aria-hidden="true">
+            {Array.from({ length: 31 }, (_, index) => (
+              <i
+                key={index}
+                style={{
+                  height: `${16 + Math.sin(index * 0.8) ** 2 * (90 - Math.abs(index - 15) * 4)}%`,
+                }}
+              />
+            ))}
+          </div>
+          <span className="story-caption">WORDS INTO VOICE.</span>
+        </div>
+        <section className="panel login-panel">
+          <div className="brand-mark">
+            <Icon name="studio" />
+          </div>
+          <h2>欢迎回来</h2>
+          <p className="muted">登录你的账号, 继续创作.</p>
+          {auth.notice && (
+            <p className="notice" role="status">
+              {auth.notice}
+            </p>
+          )}
+          <form onSubmit={submit} className="form-stack">
+            <label>
+              用户名
+              <input
+                autoComplete="username"
+                required
+                maxLength={32}
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="输入用户名"
+              />
+            </label>
+            <label>
+              密码
+              <input
+                type="password"
+                autoComplete="current-password"
+                required
+                maxLength={128}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="输入密码"
+              />
+            </label>
+            <ErrorNotice message={action.error} />
+            <button
+              className="button primary full-width"
+              disabled={action.busy}
+            >
+              {action.busy ? '正在登录...' : '登录'}
+              <Icon name="arrow" />
+            </button>
+          </form>
+          <p className="small muted login-help">还没有账号? 请联系管理员创建.</p>
+        </section>
+      </div>
+    </main>
   )
 }
