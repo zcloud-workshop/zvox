@@ -4,7 +4,7 @@
 
 ## 认证与用户管理
 
-首次部署运行 `uv run python -m app.tools.create_admin admin`, 交互式设置管理员密码. 创建账号、修改和重置密码均要求 8-128 个字符. 此后仅管理员可创建其他账号, 不提供自助注册.
+首次部署运行 `uv run python -m app.tools.create_admin admin`, 交互式设置管理员密码. 创建账号、修改和重置密码均要求 8-128 个字符. 此后仅管理员可创建其他账号, 不提供自助注册. 无法登录时可在服务器上运行 `uv run python -m app.tools.reset_password <username>` 重置密码, 效果与管理员重置接口相同.
 
 ```text
 POST /api/auth/login

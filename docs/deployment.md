@@ -35,7 +35,7 @@ uv sync --locked
 uv run --no-sync python -m app.tools.create_admin admin
 ```
 
-管理员命令交互式读取密码, 没有默认密码. 已有管理员时跳过创建步骤. 新数据库没有内置 Speaker, 登录后上传参考音频创建音色, 或导入已经发布到 S3 的 Speaker 元数据.
+管理员命令交互式读取密码, 没有默认密码. 已有管理员时跳过创建步骤, 忘记密码时运行 `uv run --no-sync python -m app.tools.reset_password admin` 交互式重置, 该用户已有会话和 API Key 随之失效. 新数据库没有内置 Speaker, 登录后上传参考音频创建音色, 或导入已经发布到 S3 的 Speaker 元数据.
 
 构建前端并启动服务:
 
