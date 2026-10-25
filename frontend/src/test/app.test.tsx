@@ -57,6 +57,7 @@ function mockApi(
     const response = overrides?.(path, options)
     if (response) return response
     if (path === '/api/users/me') return Response.json(currentUser)
+    if (path === '/api/users/me/api-keys') return Response.json([])
     if (path === '/api/speakers') return Response.json([speaker])
     if (path === '/api/admin/users' && !options?.method)
       return Response.json([currentUser])
@@ -375,6 +376,63 @@ describe('application flows', () => {
       current_password: 'old-password-123',
       new_password: '12345678',
     })
+  })
+  it('shows a new API key once and revokes keys after confirmation', async () => {
+    saveSession(session)
+    const created = {
+      id: 3,
+      name: 'CI',
+      prefix: 'zvox_abcdefgh',
+      created_at: '2026-10-25T10:00:00Z',
+      expires_at: '2027-01-23T10:00:00Z',
+      last_used_at: null,
+    }
+    let keys: (typeof created)[] = []
+    const fetcher = mockApi((path, options) => {
+      if (path === '/api/users/me/api-keys' && options?.method === 'POST') {
+        keys = [created]
+        return Response.json(
+          { ...created, key: 'zvox_abcdefgh-secret' },
+          { status: 201 },
+        )
+      }
+      if (path === '/api/users/me/api-keys/3' && options?.method === 'DELETE') {
+        keys = []
+        return new Response(null, { status: 204 })
+      }
+      if (path === '/api/users/me/api-keys') return Response.json(keys)
+    })
+    const events = userEvent.setup()
+    mount('/account')
+    expect(await screen.findByText('还没有 API Key.')).toBeInTheDocument()
+    await events.type(screen.getByLabelText('Key 名称'), '  CI  ')
+    await events.click(screen.getByRole('button', { name: '创建 Key' }))
+    expect(await screen.findByLabelText('新的 API Key')).toHaveValue(
+      'zvox_abcdefgh-secret',
+    )
+    expect(screen.getByLabelText('Key 名称')).toHaveValue('')
+    const call = fetcher.mock.calls.find(
+      ([path, options]) =>
+        path === '/api/users/me/api-keys' && options?.method === 'POST',
+    )!
+    expect(JSON.parse(call[1]!.body as string)).toEqual({
+      name: 'CI',
+      expires_in_days: 90,
+    })
+    await events.click(screen.getByRole('button', { name: '复制' }))
+    expect(await navigator.clipboard.readText()).toBe('zvox_abcdefgh-secret')
+    expect(await screen.findByText('zvox_abcdefgh…')).toBeInTheDocument()
+    expect(screen.getByText('从未使用')).toBeInTheDocument()
+    expect(screen.queryByText(/zvox_abcdefgh-secret/)).not.toBeInTheDocument()
+    await events.click(screen.getByRole('button', { name: '撤销' }))
+    await events.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: '确认操作',
+      }),
+    )
+    expect(await screen.findByText('API Key "CI" 已撤销.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('新的 API Key')).not.toBeInTheDocument()
+    expect(await screen.findByText('还没有 API Key.')).toBeInTheDocument()
   })
   it('creates a user and clears the submitted password', async () => {
     currentUser = { ...user, role: 'admin' }

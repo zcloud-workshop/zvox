@@ -54,6 +54,12 @@ API handlers must not contain business logic -- delegate to `services/`.
 - **Presigned URLs**: only S3 object keys stored in DB; presigned URLs generated per-request with configurable TTL
 - **Path templates**: speaker paths use `{id}` placeholders, resolved at runtime via `.format(id=speaker_id)`
 
+### Authentication
+
+- `Authorization: Bearer` carries either a 24h login session token or a `zvox_`-prefixed API key; only SHA-256 hashes are stored (`sessions`, `api_keys`)
+- `get_current_user` accepts both; `require_session_user` rejects API keys for logout, password change and API key management
+- Password change/reset, role change and deactivation delete the user's sessions and API keys; key creation re-checks the session under the user row lock
+
 ### Speaker System
 
 - Speaker metadata lives in `speaker/{id}/vox-data.json` files
@@ -63,7 +69,7 @@ API handlers must not contain business logic -- delegate to `services/`.
 ### Database
 
 - `DATABASE_URL` is required. Use `sslmode=require` when required by the PostgreSQL endpoint.
-- PostgreSQL is the only database backend for users, speakers, jobs, and sessions.
+- PostgreSQL is the only database backend for users, speakers, jobs, sessions, and API keys.
 - Startup initializes tables and indexes in an existing database; the database and connection user must be created beforehand.
 - Job quotas lock the user's row. Admin changes share a transaction advisory lock to protect the last active administrator.
 

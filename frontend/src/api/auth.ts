@@ -1,5 +1,5 @@
 import { request } from './client'
-import type { LoginResponse, User } from './types'
+import type { ApiKey, CreatedApiKey, LoginResponse, User } from './types'
 
 export const login = (username: string, password: string) =>
   request<LoginResponse>('/auth/login', {
@@ -18,3 +18,12 @@ export const changePassword = (
     method: 'POST',
     body: { current_password, new_password },
   })
+export const listApiKeys = (signal?: AbortSignal) =>
+  request<ApiKey[]>('/users/me/api-keys', { signal })
+export const createApiKey = (name: string, expires_in_days: number | null) =>
+  request<CreatedApiKey>('/users/me/api-keys', {
+    method: 'POST',
+    body: { name, expires_in_days },
+  })
+export const revokeApiKey = (id: number) =>
+  request<void>(`/users/me/api-keys/${id}`, { method: 'DELETE' })

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { changePassword } from '../api/auth'
 import { useAuth } from '../auth/context'
+import { ApiKeyPanel } from '../components/ApiKeyPanel'
 import { ErrorNotice, PageHeading } from '../components/Feedback'
 import { useAction } from '../hooks/useAction'
 
@@ -26,7 +27,7 @@ export function Account() {
       <PageHeading
         eyebrow="YOUR ACCOUNT"
         title="账号设置"
-        description="管理你的账号与登录密码."
+        description="管理你的账号, 登录密码与 API Key."
       />
       <div className="settings-grid">
         <section className="panel">
@@ -45,7 +46,9 @@ export function Account() {
         </section>
         <section className="panel">
           <h2>修改密码</h2>
-          <p className="muted">修改后, 所有设备都需要重新登录.</p>
+          <p className="muted">
+            修改后, 所有设备都需要重新登录, 已创建的 API Key 也会失效.
+          </p>
           <form className="form-stack" onSubmit={submit}>
             <label>
               当前密码
@@ -92,6 +95,7 @@ export function Account() {
             </button>
           </form>
         </section>
+        <ApiKeyPanel />
       </div>
     </>
   )

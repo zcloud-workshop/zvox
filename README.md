@@ -7,7 +7,7 @@
 - 语音生成: 选择音色并提交文本, 查看排队和执行状态, 播放生成的 WAV 音频.
 - 音色管理: 管理员上传参考音频或通过浏览器录音创建公共音色, 也可从 S3 批量导入音色元数据.
 - 任务历史: 普通用户查看自己的任务, 管理员查看全部任务, 支持分页, 错误信息和执行耗时查询.
-- 账号管理: 登录, 退出和修改密码, 管理员创建用户, 修改角色, 启停账号及重置密码.
+- 账号管理: 登录, 退出和修改密码, 创建 API Key 供脚本直接调用接口, 管理员创建用户, 修改角色, 启停账号及重置密码.
 - 运行管理: 自动准备模型, 下载状态查询与失败重试, 提供健康检查和后台任务 Worker 状态接口.
 
 ## 快速开始
@@ -167,14 +167,17 @@ output/{job_id}/
 
 ## 账号与 API
 
-登录返回有效期 24 小时的 Bearer Token. 受保护接口通过 `Authorization: Bearer <token>` 鉴权, 网页将 Token 保存在当前标签页的 `sessionStorage`. 修改或重置密码, 停用账号及变更角色会撤销该用户已有会话. 系统不允许停用或降级最后一位有效管理员.
+登录返回有效期 24 小时的 Bearer Token. 受保护接口通过 `Authorization: Bearer <token>` 鉴权, 网页将 Token 保存在当前标签页的 `sessionStorage`. 修改或重置密码, 停用账号及变更角色会撤销该用户已有会话和 API Key. 系统不允许停用或降级最后一位有效管理员.
+
+脚本和其他服务可使用 API Key 代替登录 Token. 在 "账号设置" 中创建后, 同样通过 `Authorization: Bearer <API Key>` 调用接口. 完整 Key 只在创建时显示一次, 可设置有效期, 拥有所属账号的权限, 但不能退出登录, 修改密码或管理 API Key.
 
 | 能力 | 接口 | 权限 |
 | --- | --- | --- |
 | 登录 | `POST /api/auth/login` | 公开 |
 | 健康检查 | `GET /api/health/live`, `GET /api/health/ready` | 公开 |
-| 当前账号与密码 | `GET /api/users/me`, `POST /api/users/me/password` | 登录用户 |
-| 退出登录 | `POST /api/auth/logout` | 登录用户 |
+| 当前账号 | `GET /api/users/me` | 登录用户 |
+| 修改密码与退出登录 | `POST /api/users/me/password`, `POST /api/auth/logout` | 登录会话 |
+| API Key 管理 | `GET`, `POST /api/users/me/api-keys`, `DELETE /api/users/me/api-keys/{id}` | 登录会话 |
 | 浏览音色 | `GET /api/speakers`, `GET /api/speakers/{speaker_id}` | 登录用户 |
 | 创建和查询任务 | `POST /api/jobs`, `GET /api/jobs`, `GET /api/jobs/{job_id}` | 登录用户 |
 | 用户管理 | `/api/admin/users` 及用户修改, 密码重置接口 | 管理员 |
@@ -182,6 +185,8 @@ output/{job_id}/
 | 查看导入结果 | `GET /api/admin/speakers/sync/status` | 管理员 |
 | 模型状态与下载 | `GET /api/admin/model/status`, `GET /api/admin/model` | 管理员 |
 | Worker 状态 | `GET /api/admin/worker` | 管理员 |
+
+"登录用户" 接受登录 Token 或 API Key, "登录会话" 仅接受登录 Token, "管理员" 接受管理员的登录 Token 或 API Key.
 
 普通用户只能查看自己的任务, 管理员可查看全部任务及旧数据中的无归属任务. 任务状态为 `pending`, `running`, `completed` 或 `failed`. 查询已完成任务会生成临时 `result_url`, 链接过期后重新查询即可获取新链接.
 

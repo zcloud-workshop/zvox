@@ -13,21 +13,67 @@ Content-Type: application/json
 {"username": "admin", "password": "<password>"}
 ```
 
-成功返回 `access_token`, `token_type` (`bearer`), `expires_at` 和用户信息. Token 有效期为 24 小时. 受保护的接口需发送 `Authorization: Bearer <access_token>`. 登录失败返回 `401`, 未登录返回 `401`, 权限不足返回 `403`.
+成功返回 `access_token`, `token_type` (`bearer`), `expires_at` 和用户信息. Token 有效期为 24 小时. 受保护的接口需发送 `Authorization: Bearer <access_token>`, 脚本和其他服务也可使用 [API Key](#api-key) 代替 access_token. 登录失败返回 `401`, 未登录返回 `401`, 权限不足返回 `403`.
 
 登录采用滑动窗口限流, 默认每 60 秒同一客户端 IP 最多 20 次、同一用户名最多 10 次. 用户名去除首尾空格并转为小写后计数, 成功、失败均计数, 切换账号仍受 IP 额度约束, 切换 IP 仍受账号额度约束. 超限在密码校验前返回 `429`, 响应体为 `{"detail": "Too many login attempts"}`, `Retry-After` 表示至少等待的秒数. 配置项为 `LOGIN_RATE_WINDOW_SECONDS`, `LOGIN_MAX_ATTEMPTS_PER_IP`, `LOGIN_MAX_ATTEMPTS_PER_USERNAME`, 均须为正整数. 计数按进程保存, 重启清空.
 
 | 接口 | 权限 | 用途 |
 | --- | --- | --- |
-| `POST /api/auth/logout` | 已登录 | 撤销当前 Token |
+| `POST /api/auth/logout` | 登录会话 | 撤销当前 Token |
 | `GET /api/users/me` | 已登录 | 查询当前用户 |
-| `POST /api/users/me/password` | 已登录 | 提交 `current_password` 和 `new_password`, 改密后所有 Token 失效 |
+| `POST /api/users/me/password` | 登录会话 | 提交 `current_password` 和 `new_password`, 改密后所有 Token 和 API Key 失效 |
 | `GET /api/admin/users` | 管理员 | 列出用户 |
 | `POST /api/admin/users` | 管理员 | 创建用户, 请求体含 `username`, `password`, 可选 `role` (`user` / `admin`) |
-| `PATCH /api/admin/users/{id}` | 管理员 | 修改 `role` 或 `is_active`; 不允许停用或降级最后一位管理员 |
-| `POST /api/admin/users/{id}/password` | 管理员 | 提交 `password` 重置密码, 原有 Token 失效 |
+| `PATCH /api/admin/users/{id}` | 管理员 | 修改 `role` 或 `is_active`; 变更角色或停用会撤销该用户的 Token 和 API Key; 不允许停用或降级最后一位管理员 |
+| `POST /api/admin/users/{id}/password` | 管理员 | 提交 `password` 重置密码, 原有 Token 和 API Key 失效 |
+
+"已登录" 接受 access_token 或 API Key, "登录会话" 仅接受 access_token, 使用 API Key 调用返回 `403` 和 `{"detail": "Login session required"}`.
 
 用户名为 3-32 位字母、数字、点、下划线或连字符, 登录时不区分大小写. 停用用户会立即失去访问权限. 不直接删除用户, 以保留任务归属记录.
+
+### API Key
+
+API Key 用于脚本或其他服务直接调用接口, 无需每 24 小时重新登录. 登录后在网页 "账号设置" 中创建, 或调用以下接口:
+
+| 接口 | 权限 | 用途 |
+| --- | --- | --- |
+| `GET /api/users/me/api-keys` | 登录会话 | 列出当前用户的 API Key, 不含完整 Key |
+| `POST /api/users/me/api-keys` | 登录会话 | 创建 API Key, 请求体含 `name` (1-64 字符) 和可选 `expires_in_days` (1-3650, 省略或为 `null` 表示永不过期) |
+| `DELETE /api/users/me/api-keys/{id}` | 登录会话 | 撤销 API Key, Key 不存在或不属于当前用户时返回 `404` |
+
+```text
+POST /api/users/me/api-keys
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"name": "批量生成脚本", "expires_in_days": 90}
+```
+
+成功返回 `201`:
+
+```json
+{
+  "id": 1,
+  "name": "批量生成脚本",
+  "prefix": "zvox_AbCd1234",
+  "created_at": "2026-10-25T10:00:00+00:00",
+  "expires_at": "2027-01-23T10:00:00+00:00",
+  "last_used_at": null,
+  "key": "zvox_AbCd1234..."
+}
+```
+
+完整 `key` 仅在创建响应中返回一次, 服务端只保存其 SHA-256 哈希, 之后通过 `prefix` 辨认. 调用其他接口时与 access_token 用法相同:
+
+```bash
+curl -H "Authorization: Bearer $ZVOX_API_KEY" http://127.0.0.1:8000/api/speakers
+```
+
+- API Key 拥有所属账号的当前权限, 管理员创建的 Key 可调用管理接口, 但不能退出登录, 修改密码或管理 API Key.
+- 名称去除首尾空格后为空返回 `400`, 字段校验失败返回 `422`.
+- 每位用户最多保留 10 个 API Key, 已过期的 Key 同样计入, 超出返回 `409` (`API key limit reached`), 需先撤销不再使用的 Key.
+- 过期, 已撤销或账号停用时使用 Key 返回 `401`. 修改或重置密码, 变更角色及停用账号会删除该用户的全部 API Key, 重新启用账号后需重新创建.
+- `last_used_at` 为最近一次认证成功的时间, 最多每分钟更新一次.
 
 ## 健康检查与 Worker 状态
 

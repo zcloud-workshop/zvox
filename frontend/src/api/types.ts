@@ -14,6 +14,17 @@ export interface LoginResponse extends Session {
   token_type: 'bearer'
   user: User
 }
+export interface ApiKey {
+  id: number
+  name: string
+  prefix: string
+  created_at: string
+  expires_at: string | null
+  last_used_at: string | null
+}
+export interface CreatedApiKey extends ApiKey {
+  key: string
+}
 export interface Speaker {
   id: number
   name: string | null
