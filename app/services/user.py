@@ -60,12 +60,16 @@ def _public_user(row: dict) -> dict:
 _DUMMY_HASH = _hash_password("invalid-password")
 
 
+def _check_password_length(password: str):
+    if not 8 <= len(password) <= 128:
+        raise ValueError("Password must be 8-128 characters")
+
+
 def create_user(username: str, password: str, role: str = "user") -> dict:
     username = username.strip().lower()
     if not re.fullmatch(r"[a-z0-9_.-]{3,32}", username):
         raise ValueError("Username must be 3-32 letters, digits, dots, underscores or hyphens")
-    if not 8 <= len(password) <= 128:
-        raise ValueError("Password must be 8-128 characters")
+    _check_password_length(password)
     if role not in ("admin", "user"):
         raise ValueError("Invalid role")
     try:
@@ -121,6 +125,14 @@ def change_password(user_id: int, current_password: str, new_password: str) -> b
 
 def reset_password(user_id: int, password: str) -> bool:
     return db_update_password(user_id, _hash_password(password))
+
+
+def reset_password_by_username(username: str, password: str) -> dict:
+    _check_password_length(password)
+    row = db_get_user_by_username(username.strip().lower())
+    if row is None or not db_update_password(row["id"], _hash_password(password)):
+        raise ValueError("User not found")
+    return _public_user(row)
 
 
 def create_api_key(user_id: int, session_token: str, name: str, expires_in_days: int | None) -> dict | None:

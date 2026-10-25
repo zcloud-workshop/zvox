@@ -169,6 +169,12 @@ output/{job_id}/
 
 登录返回有效期 24 小时的 Bearer Token. 受保护接口通过 `Authorization: Bearer <token>` 鉴权, 网页将 Token 保存在当前标签页的 `sessionStorage`. 修改或重置密码, 停用账号及变更角色会撤销该用户已有会话和 API Key. 系统不允许停用或降级最后一位有效管理员.
 
+无法登录时, 在仓库根目录运行以下命令重置任意账号的密码, 交互式输入并确认新密码. 重置同样会撤销该用户已有会话和 API Key, 已停用的账号仍需管理员重新启用.
+
+```bash
+uv run --no-sync python -m app.tools.reset_password admin
+```
+
 脚本和其他服务可使用 API Key 代替登录 Token. 在 "账号设置" 中创建后, 同样通过 `Authorization: Bearer <API Key>` 调用接口. 完整 Key 只在创建时显示一次, 可设置有效期, 拥有所属账号的权限, 但不能退出登录, 修改密码或管理 API Key.
 
 | 能力 | 接口 | 权限 |
@@ -265,7 +271,7 @@ pnpm build
 | `app/db/database.py` | psycopg PostgreSQL 表初始化与数据库操作 |
 | `app/core/` | 环境配置和 S3 客户端 |
 | `app/models/` | Pydantic 请求与响应模型 |
-| `app/tools/` | 创建管理员, 准备模型和生成资源 URL 等工具 |
+| `app/tools/` | 创建管理员, 重置密码, 准备模型和生成资源 URL 等工具 |
 | `frontend/` | Vite + React + TypeScript 网页应用 |
 | `tests/` | 后端回归与集成测试 |
 | `docs/` | API, 部署及设计文档 |

@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -9,8 +10,9 @@ import unittest
 import wave
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime, timedelta
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -26,6 +28,7 @@ from app.models.schemas import Job
 from app.services import job as job_service
 from app.services import model, speaker, sync, tts, user
 from app.services.login_rate_limit import LoginRateLimiter
+from app.tools import reset_password
 
 
 class DatabaseCase(unittest.TestCase):
@@ -301,6 +304,46 @@ class UserApiTests(DatabaseCase):
         user.logout(token)
         self.assertIsNone(user.create_api_key(self.alice["id"], token, "revoked session", None))
         self.assertEqual(database.db_list_api_keys(self.alice["id"]), [])
+
+    def test_reset_password_command(self):
+        def run(username: str, *passwords: str) -> tuple[int, str, str]:
+            stdout, stderr = StringIO(), StringIO()
+            with patch.object(sys, "argv", ["reset_password", username]), patch.object(
+                reset_password, "getpass", side_effect=passwords
+            ), redirect_stdout(stdout), redirect_stderr(stderr):
+                try:
+                    reset_password.main()
+                    code = 0
+                except SystemExit as exc:
+                    code = exc.code
+            return code, stdout.getvalue(), stderr.getvalue()
+
+        alice_auth = self.auth("alice", "alice-password-123")
+        key = self.client.post("/api/users/me/api-keys", headers=alice_auth, json={"name": "ci"}).json()["key"]
+        for args, error in (
+            (("alice", "new-password-123", "other-password-123"), "Passwords do not match"),
+            (("alice", "short", "short"), "Password must be 8-128 characters"),
+            (("nobody", "new-password-123", "new-password-123"), "User not found"),
+        ):
+            with self.subTest(error=error):
+                code, _, stderr = run(*args)
+                self.assertEqual(code, 2)
+                self.assertIn(error, stderr)
+        self.assertEqual(self.client.get("/api/users/me", headers=alice_auth).status_code, 200)
+
+        self.assertEqual(
+            run("ALICE", "new-password-123", "new-password-123"),
+            (0, "Reset password for alice; existing sessions and API keys were revoked\n", ""),
+        )
+        for auth in (alice_auth, {"Authorization": f"Bearer {key}"}):
+            self.assertEqual(self.client.get("/api/users/me", headers=auth).status_code, 401)
+        self.assertIsNone(user.login("alice", "alice-password-123"))
+        self.auth("alice", "new-password-123")
+
+        database.db_update_user(self.bob["id"], None, False)
+        code, _, stderr = run("bob", "new-password-123", "new-password-123")
+        self.assertEqual(code, 0)
+        self.assertIn("bob is disabled", stderr)
 
 
 class PostgreSQLConcurrencyTests(DatabaseCase):
