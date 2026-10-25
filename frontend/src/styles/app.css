@@ -9,8 +9,11 @@
   display: flex;
   flex-direction: column;
   padding: 34px 20px 24px;
-  position: fixed;
-  inset: 0 auto 0 0;
+  /* 用 sticky 而非 fixed: 窗口窄于最小宽度时侧栏随页面横向滚动, 不遮挡内容. */
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  flex-shrink: 0;
   z-index: 10;
 }
 .brand {
@@ -133,7 +136,6 @@
 }
 .workspace {
   flex: 1;
-  margin-left: 224px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -629,10 +631,17 @@
   font-size: 11px;
   font-weight: 400;
 }
+.auth-page {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 44px;
+}
 .login-layout {
   display: grid;
   grid-template-columns: 1fr minmax(300px, 390px);
   gap: 70px;
+  width: 100%;
   max-width: 1000px;
   align-items: center;
   min-height: 630px;
@@ -1068,9 +1077,6 @@
   padding-left: 18px;
   overflow-wrap: anywhere;
 }
-.menu-toggle {
-  display: none;
-}
 .skip-link {
   position: fixed;
   left: 20px;
@@ -1099,9 +1105,6 @@
     width: 200px;
     padding-inline: 16px;
   }
-  .workspace {
-    margin-left: 200px;
-  }
   .main-content {
     padding: 32px 28px;
   }
@@ -1127,222 +1130,6 @@
   }
   .editor-footer {
     justify-content: flex-end;
-  }
-}
-@media (max-width: 960px) {
-  .studio-grid,
-  .users-grid {
-    grid-template-columns: 1fr;
-  }
-  .voice-panel {
-    min-height: auto;
-  }
-  .voice-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-height: 300px;
-  }
-  .voice-panel .panel-footnote {
-    display: none;
-  }
-  .studio-grid .script-input {
-    min-height: 230px;
-  }
-  .settings-grid,
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
-  .topbar-caption {
-    display: none;
-  }
-  .login-layout {
-    grid-template-columns: 1fr;
-    min-height: auto;
-    max-width: 430px;
-    gap: 28px;
-  }
-  .login-story {
-    padding: 0;
-  }
-  .login-story h1 {
-    font-size: 28px;
-  }
-  .wave-art,
-  .story-caption,
-  .login-story > p:not(.eyebrow) {
-    display: none;
-  }
-  .login-panel {
-    padding: 30px;
-  }
-}
-@media (max-width: 680px) {
-  .app-layout {
-    flex-direction: column;
-  }
-  .sidebar {
-    position: sticky;
-    inset: 0 0 auto;
-    width: 100%;
-    padding: 14px 18px;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .sidebar-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .brand {
-    font-size: 22px;
-  }
-  .brand-sub {
-    display: none;
-  }
-  .brand-mark {
-    width: 31px;
-    height: 31px;
-  }
-  .menu-toggle {
-    display: inline-flex;
-    min-height: 34px;
-    padding: 5px 11px;
-  }
-  .sidebar nav {
-    display: none;
-    margin-top: 18px;
-    max-height: 60svh;
-    overflow: auto;
-  }
-  .sidebar nav.open {
-    display: block;
-  }
-  .sidebar-bottom {
-    display: none;
-  }
-  .sidebar:has(nav.open) .sidebar-bottom {
-    display: block;
-    padding-top: 10px;
-  }
-  .sidebar-note {
-    display: none;
-  }
-  .workspace {
-    margin-left: 0;
-  }
-  .topbar {
-    height: 47px;
-    padding-inline: 20px;
-    font-size: 10px;
-  }
-  .main-content {
-    padding: 28px 18px;
-  }
-  .page-heading {
-    gap: 12px;
-    margin-bottom: 25px;
-    align-items: flex-start;
-  }
-  .page-heading .muted {
-    font-size: 12px;
-  }
-  .page-heading h1 {
-    font-size: 27px;
-  }
-  .page-heading > .button {
-    white-space: nowrap;
-    padding-inline: 11px;
-  }
-  .eyebrow {
-    font-size: 9px;
-  }
-  .panel {
-    padding: 20px;
-    border-radius: 10px;
-  }
-  .voice-list {
-    grid-template-columns: 1fr;
-    max-height: 290px;
-  }
-  .studio-grid {
-    gap: 18px;
-  }
-  .section-title {
-    margin-bottom: 18px;
-  }
-  .editor-meta {
-    font-size: 9px;
-  }
-  .editor-footer .primary {
-    width: 100%;
-  }
-  .studio-notes {
-    gap: 12px;
-    font-size: 9px;
-  }
-  .studio-notes i {
-    width: 10px;
-  }
-  .studio-notes b {
-    margin-right: 3px;
-  }
-  .app-footer {
-    padding: 20px;
-    font-size: 9px;
-  }
-  .job-row {
-    gap: 10px;
-    flex-wrap: wrap;
-    padding-block: 18px;
-  }
-  .job-row .avatar {
-    width: 35px;
-    height: 35px;
-    font-size: 14px;
-  }
-  .job-row .row-arrow {
-    display: none;
-  }
-  .job-summary > span {
-    font-size: 9px;
-  }
-  .job-row .badge {
-    font-size: 9px;
-    padding: 4px 6px;
-  }
-  .meta-separator {
-    margin-inline: 6px;
-  }
-  .login-layout {
-    gap: 22px;
-  }
-  .login-panel {
-    padding: 25px;
-  }
-  .login-story h1 {
-    margin-bottom: 0;
-  }
-  .login-story h1 br {
-    display: none;
-  }
-  .login-story .eyebrow {
-    margin-bottom: 12px;
-  }
-  .login-panel > .brand-mark {
-    display: none;
-  }
-  .detail-meta {
-    grid-template-columns: 1fr;
-    gap: 5px;
-  }
-  .detail-meta > code {
-    margin-bottom: 12px;
-  }
-  .user-actions {
-    margin-left: 0;
-    gap: 20px;
-  }
-  .notice.error {
-    align-items: flex-start;
   }
 }
 @media (prefers-reduced-motion: reduce) {

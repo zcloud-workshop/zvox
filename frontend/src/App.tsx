@@ -18,7 +18,6 @@ import { Studio } from './pages/Studio'
 function Layout() {
   const auth = useAuth()
   const navigate = useNavigate()
-  const [menuOpen, setMenuOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   async function signOut() {
     if (loggingOut) return
@@ -41,28 +40,13 @@ function Layout() {
         跳转到主要内容
       </a>
       <aside className="sidebar">
-        <div className="sidebar-top">
-          <Link to="/" className="brand" onClick={() => setMenuOpen(false)}>
-            <span className="brand-mark">
-              <Icon name="studio" />
-            </span>
-            ZVox<span className="brand-sub">STUDIO</span>
-          </Link>
-          <button
-            className="menu-toggle button secondary"
-            aria-expanded={menuOpen}
-            aria-controls="main-navigation"
-            onClick={() => setMenuOpen((value) => !value)}
-          >
-            菜单
-          </button>
-        </div>
-        <nav
-          id="main-navigation"
-          aria-label="主导航"
-          className={menuOpen ? 'open' : ''}
-          onClick={() => setMenuOpen(false)}
-        >
+        <Link to="/" className="brand">
+          <span className="brand-mark">
+            <Icon name="studio" />
+          </span>
+          ZVox<span className="brand-sub">STUDIO</span>
+        </Link>
+        <nav aria-label="主导航">
           <p className="nav-heading">工作空间</p>
           <NavLink to="/" end>
             <Icon name="studio" />
@@ -99,9 +83,9 @@ function Layout() {
               <span>让每个想法被听见.</span>
             </p>
           </div>
-          {auth.user ? (
+          {auth.user && (
             <div className="sidebar-account">
-              <Link to="/account" onClick={() => setMenuOpen(false)}>
+              <Link to="/account">
                 <Avatar name={auth.user.username} id={auth.user.id} />
                 <span>
                   <strong>{auth.user.username}</strong>
@@ -114,22 +98,12 @@ function Layout() {
                 className="text-button"
                 disabled={loggingOut}
                 onClick={() => {
-                  setMenuOpen(false)
                   void signOut()
                 }}
               >
                 {loggingOut ? '退出中' : '退出'}
               </button>
             </div>
-          ) : (
-            <Link
-              className="button primary full-width"
-              to="/login"
-              onClick={() => setMenuOpen(false)}
-            >
-              登录 ZVox
-              <Icon name="arrow" />
-            </Link>
           )}
         </div>
       </aside>
@@ -155,31 +129,31 @@ function Layout() {
 export default function App() {
   return (
     <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<Studio />} />
-        <Route path="login" element={<Login />} />
-        <Route element={<RequireAuth />}>
+      <Route path="login" element={<Login />} />
+      <Route element={<RequireAuth />}>
+        <Route element={<Layout />}>
+          <Route index element={<Studio />} />
           <Route path="jobs" element={<Jobs />} />
           <Route path="jobs/:id" element={<JobDetail />} />
           <Route path="account" element={<Account />} />
+          <Route element={<RequireAuth admin />}>
+            <Route path="admin/users" element={<AdminUsers />} />
+            <Route path="admin/system" element={<AdminSystem />} />
+          </Route>
+          <Route
+            path="*"
+            element={
+              <EmptyState
+                title="页面不存在"
+                description="回到工作台, 继续你的创作."
+              >
+                <Link to="/" className="button primary">
+                  返回工作台
+                </Link>
+              </EmptyState>
+            }
+          />
         </Route>
-        <Route element={<RequireAuth admin />}>
-          <Route path="admin/users" element={<AdminUsers />} />
-          <Route path="admin/system" element={<AdminSystem />} />
-        </Route>
-        <Route
-          path="*"
-          element={
-            <EmptyState
-              title="页面不存在"
-              description="回到工作台, 继续你的创作."
-            >
-              <Link to="/" className="button primary">
-                返回工作台
-              </Link>
-            </EmptyState>
-          }
-        />
       </Route>
     </Routes>
   )

@@ -19,7 +19,11 @@ Node 固定为 `.nvmrc` 中的 24.18.0, pnpm 为 11.9.0. 若 nvm 不可用, 先�
 
 ## 功能与约束
 
-- `/`: 公开浏览和搜索音色, 登录后提交文本生成. 按 Unicode 码点计数, 最多 4096 字符.
+除 `/login` 外的页面都需要登录. 未登录时转到登录页, 登录后返回原页面. 登录页单独显示, 不含侧栏.
+
+只面向桌面浏览器. 页面最小宽度 1024px, 更窄的窗口横向滚动; 窗口不超过 1200px 时侧栏和边距收紧.
+
+- `/`: 浏览和搜索音色, 提交文本生成. 按 Unicode 码点计数, 最多 4096 字符.
 - `/login`: 登录, 失败提示及安全的站内返回地址.
 - `/jobs`: 普通用户的个人任务或管理员的全部任务, 每页 20 条, 游标加载更多.
 - `/jobs/:id`: 任务状态, 错误原因, 音频播放和临时文件链接.
@@ -75,7 +79,7 @@ pnpm preview
 | `src/hooks/` | 有取消和退避的查询, 写入操作互斥 |
 | `src/components/` | 反馈, 头像, 图标, 状态及确认弹窗 |
 | `src/pages/` | 工作台, 任务, 账号与管理页面 |
-| `src/styles/` | 桌面与移动端布局 |
+| `src/styles/` | 桌面端布局 |
 | `src/test/` | 集成测试与测试清理 |
 
 版本要求核对来源: [Vite 安装要求](https://vite.dev/guide/), [代理配置](https://vite.dev/config/server-options#server-proxy), [React Router 安装](https://reactrouter.com/start/declarative/installation), [Vitest 入门](https://vitest.dev/guide/).

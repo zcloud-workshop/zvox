@@ -9,33 +9,10 @@ import { Icon } from '../components/Icon'
 import { useAction } from '../hooks/useAction'
 import { useQuery } from '../hooks/useQuery'
 
-function SignInPrompt() {
-  const auth = useAuth()
-  if (auth.loading)
-    return <EmptyState title="正在恢复登录状态" description="请稍候." />
-  if (auth.error)
-    return (
-      <ErrorNotice
-        message={auth.error}
-        retry={() => {
-          void auth.refresh()
-        }}
-      />
-    )
-  return (
-    <EmptyState title="登录后查看音色" description="音色列表仅对登录用户开放.">
-      <Link className="button primary" to="/login">
-        登录 ZVox
-        <Icon name="arrow" />
-      </Link>
-    </EmptyState>
-  )
-}
-
 export function Studio() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const speakers = useQuery(user ? listSpeakers : null)
+  const speakers = useQuery(listSpeakers)
   const action = useAction()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
@@ -74,65 +51,57 @@ export function Studio() {
               <span className="step">01</span>
               <h2 id="voices-title">选择音色</h2>
             </div>
-            {user && (
-              <span className="count-tag">
-                {speakers.data?.length ?? 0} 个音色
-              </span>
-            )}
+            <span className="count-tag">
+              {speakers.data?.length ?? 0} 个音色
+            </span>
           </div>
-          {user ? (
-            <>
-              <div className="search-input">
-                <Icon name="search" />
-                <input
-                  aria-label="搜索音色"
-                  placeholder="搜索音色名称"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+          <div className="search-input">
+            <Icon name="search" />
+            <input
+              aria-label="搜索音色"
+              placeholder="搜索音色名称"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+          <ErrorNotice message={speakers.error} retry={speakers.reload} />
+          {speakers.loading ? (
+            <EmptyState title="正在加载音色" description="马上就好." />
+          ) : !speakers.error && visible.length === 0 ? (
+            <EmptyState
+              title={search ? '没有匹配的音色' : '声音即将登场'}
+              description={
+                search
+                  ? '试试其他名称.'
+                  : '管理员导入音色后, 就能在这里开始创作.'
+              }
+            />
+          ) : null}
+          <div className="voice-list">
+            {visible.map((speaker) => (
+              <button
+                key={speaker.id}
+                className={`voice-card ${selectedId === speaker.id ? 'selected' : ''}`}
+                aria-pressed={selectedId === speaker.id}
+                onClick={() => setSelectedId(speaker.id)}
+              >
+                <Avatar
+                  name={speaker.name ?? `音色 ${speaker.id}`}
+                  url={speaker.icon_url}
+                  id={speaker.id}
                 />
-              </div>
-              <ErrorNotice message={speakers.error} retry={speakers.reload} />
-              {speakers.loading ? (
-                <EmptyState title="正在加载音色" description="马上就好." />
-              ) : !speakers.error && visible.length === 0 ? (
-                <EmptyState
-                  title={search ? '没有匹配的音色' : '声音即将登场'}
-                  description={
-                    search
-                      ? '试试其他名称.'
-                      : '管理员导入音色后, 就能在这里开始创作.'
-                  }
-                />
-              ) : null}
-              <div className="voice-list">
-                {visible.map((speaker) => (
-                  <button
-                    key={speaker.id}
-                    className={`voice-card ${selectedId === speaker.id ? 'selected' : ''}`}
-                    aria-pressed={selectedId === speaker.id}
-                    onClick={() => setSelectedId(speaker.id)}
-                  >
-                    <Avatar
-                      name={speaker.name ?? `音色 ${speaker.id}`}
-                      url={speaker.icon_url}
-                      id={speaker.id}
-                    />
-                    <span className="voice-info">
-                      <strong>{speaker.name ?? `音色 ${speaker.id}`}</strong>
-                      <span>
-                        {speaker.description || '等待你的文字, 开启新的表达.'}
-                      </span>
-                    </span>
-                    <span className="selection-indicator" aria-hidden="true" />
-                  </button>
-                ))}
-              </div>
-              {user.role === 'admin' && (
-                <Link className="button secondary" to="/admin/system">添加音频</Link>
-              )}
-            </>
-          ) : (
-            <SignInPrompt />
+                <span className="voice-info">
+                  <strong>{speaker.name ?? `音色 ${speaker.id}`}</strong>
+                  <span>
+                    {speaker.description || '等待你的文字, 开启新的表达.'}
+                  </span>
+                </span>
+                <span className="selection-indicator" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+          {user?.role === 'admin' && (
+            <Link className="button secondary" to="/admin/system">添加音频</Link>
           )}
           <p className="panel-footnote">每一种声音, 都有自己的表达.</p>
         </section>
@@ -198,22 +167,15 @@ export function Studio() {
                 <strong>生成属于你的声音</strong>
               </span>
             </div>
-            {user ? (
-              <button
-                className="button primary"
-                disabled={
-                  action.busy || !selected || !text.trim() || count > 4096
-                }
-              >
-                {action.busy ? '正在提交...' : '生成语音'}
-                <Icon name="arrow" />
-              </button>
-            ) : (
-              <Link className="button primary" to="/login">
-                登录后生成
-                <Icon name="arrow" />
-              </Link>
-            )}
+            <button
+              className="button primary"
+              disabled={
+                action.busy || !selected || !text.trim() || count > 4096
+              }
+            >
+              {action.busy ? '正在提交...' : '生成语音'}
+              <Icon name="arrow" />
+            </button>
           </div>
         </form>
       </div>
