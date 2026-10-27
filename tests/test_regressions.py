@@ -537,9 +537,8 @@ class JobRecoveryTests(DatabaseCase):
 class SpeakerUploadTests(DatabaseCase):
     def setUp(self):
         super().setUp()
-        user.create_user("admin", "admin-password-123", "admin")
         user.create_user("alice", "alice-password-123")
-        token = user.login("admin", "admin-password-123")["access_token"]
+        token = user.login("alice", "alice-password-123")["access_token"]
         self.headers = {"Authorization": f"Bearer {token}"}
         self.client = TestClient(app)
         self.addCleanup(self.client.close)
@@ -559,7 +558,7 @@ class SpeakerUploadTests(DatabaseCase):
 
     def upload(self, audio=None, **fields):
         return self.client.post(
-            "/api/admin/speakers", headers=self.headers,
+            "/api/speakers", headers=self.headers,
             data={"name": "  新音色  ", "prompt_text": "  你好世界  ", **fields},
             files={"audio": ("../../voice.wav", self.audio() if audio is None else audio, "audio/wav")},
         )
@@ -570,8 +569,11 @@ class SpeakerUploadTests(DatabaseCase):
         speaker_id = response.json()["id"]
         self.assertLess(speaker_id, 2**53)
         self.assertEqual(response.json()["name"], "新音色")
-        alice = {"Authorization": f"Bearer {user.login('alice', 'alice-password-123')['access_token']}"}
-        self.assertEqual(self.client.get("/api/speakers", headers=alice).json(), [response.json()])
+        alice = self.headers
+        self.assertEqual(
+            self.client.get("/api/speakers", headers=alice).json(),
+            [{**response.json(), "owner_username": "alice"}],
+        )
         audio, metadata = [call.kwargs for call in self.storage.put_object.call_args_list]
         self.assertEqual(audio["Key"], f"speaker/{speaker_id}/reference.wav")
         with wave.open(BytesIO(audio["Body"]), "rb") as wav:
@@ -587,14 +589,9 @@ class SpeakerUploadTests(DatabaseCase):
             self.assertEqual(sync.sync_speakers_to_db(), (1, 0))
         self.assertIsNotNone(database.db_get_speaker(speaker_id))
 
-    def test_upload_requires_admin(self):
-        for headers, status in (
-            ({}, 401),
-            ({"Authorization": f"Bearer {user.login('alice', 'alice-password-123')['access_token']}"}, 403),
-        ):
-            with self.subTest(status=status):
-                self.headers = headers
-                self.assertEqual(self.upload().status_code, status)
+    def test_upload_requires_auth(self):
+        self.headers = {}
+        self.assertEqual(self.upload().status_code, 401)
         self.storage.put_object.assert_not_called()
 
     def test_supported_formats_preserve_float_audio_volume(self):
@@ -630,7 +627,7 @@ class SpeakerUploadTests(DatabaseCase):
 
     def test_storage_failure_cleans_up_and_does_not_publish_speaker(self):
         self.storage.put_object.side_effect = [None, RuntimeError("storage unavailable")]
-        with self.assertLogs("app.api.admin", level="ERROR"):
+        with self.assertLogs("app.api.speakers", level="ERROR"):
             response = self.upload()
         self.assertEqual(response.status_code, 503)
         self.assertEqual(database.db_list_speakers({"id": 0, "role": "admin"}), [])
@@ -640,7 +637,7 @@ class SpeakerUploadTests(DatabaseCase):
 
     def test_database_failure_removes_published_objects(self):
         with patch.object(speaker, "db_insert_speaker", side_effect=RuntimeError("database unavailable")), self.assertLogs(
-            "app.api.admin", level="ERROR"
+            "app.api.speakers", level="ERROR"
         ):
             self.assertEqual(self.upload().status_code, 503)
         self.assertEqual(self.storage.delete_object.call_count, 2)

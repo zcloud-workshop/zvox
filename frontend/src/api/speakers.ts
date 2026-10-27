@@ -31,6 +31,3 @@ export const reviewSpeaker = (
     method: 'POST',
     body: { decision, comment },
   })
-
-export const createSpeaker = (body: FormData) =>
-  request<Speaker>('/admin/speakers', { method: 'POST', body })

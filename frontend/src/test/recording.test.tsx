@@ -146,12 +146,12 @@ describe('reference recording', () => {
     const text = (screen.getByLabelText('音频对应文本') as HTMLTextAreaElement).value
     expect(text.match(/[\u4e00-\u9fff]/g)).toHaveLength(31)
     await events.click(screen.getByRole('button', { name: '开始录音' }))
-    expect(screen.getByRole('button', { name: '上传并添加音色' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '创建音色' })).toBeDisabled()
     expect(screen.getByLabelText('参考音频')).toBeDisabled()
     await events.click(screen.getByRole('button', { name: '停止录音' }))
     expect(await screen.findByLabelText('参考音频试听')).toHaveAttribute('src', 'blob:recording')
     expect(screen.getByLabelText('参考音频')).not.toBeRequired()
-    await events.click(screen.getByRole('button', { name: '上传并添加音色' }))
+    await events.click(screen.getByRole('button', { name: '创建音色' }))
     await waitFor(() => expect(fetcher).toHaveBeenCalledOnce())
     const body = fetcher.mock.calls[0][1].body as FormData
     expect(body.get('prompt_text')).toBe(text)

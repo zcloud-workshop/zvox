@@ -36,7 +36,7 @@ export function MySpeakers() {
         </span>
       </PageHeading>
       <div className="my-speakers-grid">
-        <SpeakerUpload variant="personal" />
+        <SpeakerUpload />
         <section className="panel" aria-labelledby="my-voices-title">
           <div className="section-title">
             <div>

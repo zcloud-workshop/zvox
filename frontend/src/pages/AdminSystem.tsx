@@ -8,7 +8,6 @@ import {
 import type { ModelStatus, SyncStatus } from '../api/types'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ErrorNotice, PageHeading } from '../components/Feedback'
-import { SpeakerUpload } from '../components/SpeakerUpload'
 import { useAction } from '../hooks/useAction'
 import { useQuery } from '../hooks/useQuery'
 
@@ -73,7 +72,6 @@ export function AdminSystem() {
         title="系统管理"
         description="准备好音色与模型, 让创作顺畅发生."
       />
-      <SpeakerUpload />
       <div className="settings-grid">
         <section className="panel">
           <div className="section-title">

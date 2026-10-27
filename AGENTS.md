@@ -65,7 +65,7 @@ API handlers must not contain business logic -- delegate to `services/`.
 - Speaker metadata lives in `speaker/{id}/vox-data.json` objects on S3
 - `sync.py` imports speaker metadata one-way from S3 into the `speakers` table (no local directory involved); its upsert only touches metadata columns, so ownership/status survive re-import
 - All speaker reads go through PostgreSQL, not the filesystem
-- **Ownership & permissions**: `speakers.owner_user_id` is NULL for system speakers (visible to everyone, created by admins or sync); user-created speakers start `private` (owner + admin only). `speaker.can_use()` gates `GET /api/speakers*` and job creation (403 via `PermissionError` in `services/job.py`)
+- **Ownership & permissions**: `speakers.owner_user_id` is NULL for system speakers (visible to everyone, created only via sync); user-created speakers start `private` (owner + admin only). `speaker.can_use()` gates `GET /api/speakers*` and job creation (403 via `PermissionError` in `services/job.py`)
 - **Plaza & review**: owners submit (`private/rejected → pending`), admins approve/reject via `/api/admin/speakers/{id}/review` (`approved` speakers are public and listed in `/api/speakers/plaza`); owners may withdraw (`pending/approved → private`). Status transitions use a compare-and-set `db_update_speaker_status`; non-owners get 404, invalid transitions 409
 - **Per-user quota**: `MAX_SPEAKERS_PER_USER` (default 20) enforced in `create_speaker`, 409 on excess
 

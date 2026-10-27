@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from app.api.users import require_admin
 from app.models.schemas import ReviewSpeakerRequest, Speaker, WorkerStatus
@@ -16,24 +16,6 @@ router = APIRouter(prefix="/api/admin", tags=["Admin"], dependencies=[Depends(re
 @router.get("/worker", response_model=WorkerStatus)
 async def worker_status(request: Request):
     return get_worker_status(getattr(request.app.state, "worker_task", None))
-
-
-@router.post("/speakers", response_model=Speaker, status_code=201)
-async def create_speaker(
-    name: str = Form(..., min_length=1, max_length=100),
-    prompt_text: str = Form(..., min_length=1, max_length=4096),
-    description: str = Form("", max_length=500),
-    audio: UploadFile = File(...),
-):
-    try:
-        return await asyncio.to_thread(speaker_service.create_speaker, name, description, prompt_text, audio.file)
-    except speaker_service.AudioTooLargeError as exc:
-        raise HTTPException(status_code=413, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        logging.getLogger(__name__).exception("Could not create speaker")
-        raise HTTPException(status_code=503, detail="Could not save speaker") from exc
 
 
 @router.get("/speakers/reviews", response_model=list[Speaker])

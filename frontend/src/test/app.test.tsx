@@ -549,7 +549,6 @@ describe('application flows', () => {
     ).toHaveLength(1)
   })
   it('uploads an audio file, previews it, and makes the new voice selectable', async () => {
-    currentUser = { ...user, role: 'admin' }
     saveSession(session)
     const createObjectURL = vi.fn().mockReturnValue('blob:preview')
     const revokeObjectURL = vi.fn()
@@ -559,14 +558,15 @@ describe('application flows', () => {
     })
     let added = false
     const newSpeaker = { ...speaker, id: 2, name: '我的声音' }
-    const fetcher = mockApi((path) => {
-      if (path === '/api/admin/speakers') {
+    const fetcher = mockApi((path, options) => {
+      if (path === '/api/speakers' && options?.method === 'POST') {
         added = true
         return Response.json(newSpeaker, { status: 201 })
       }
+      if (path === '/api/speakers/mine') return Response.json(added ? [newSpeaker] : [])
       if (path === '/api/speakers' && added) return Response.json([speaker, newSpeaker])
     })
-    mount('/admin/system')
+    mount('/speakers')
     await screen.findByLabelText('参考音频')
     const events = userEvent.setup()
     await events.type(screen.getByLabelText('音色名称'), '我的声音')
@@ -576,10 +576,14 @@ describe('application flows', () => {
     // jsdom 的原生 required 校验看不到 user-event 模拟的 FileList.
     fireEvent.submit(screen.getByLabelText('音色名称').closest('form')!)
     expect(await screen.findByRole('status')).toHaveTextContent('我的声音')
-    const options = fetcher.mock.calls.find(([path]) => path === '/api/admin/speakers')?.[1]
+    const [path, options] = fetcher.mock.calls.find(
+      ([callPath, callOptions]) => callPath === '/api/speakers' && callOptions?.method === 'POST',
+    )!
+    expect(path).toBe('/api/speakers')
     const body = options?.body as FormData
     expect(body).toBeInstanceOf(FormData)
     expect(body.get('prompt_text')).toBe('你好世界')
+    expect(body.get('publish')).toBe('false')
     expect((body.get('audio') as File).name).toBe('voice.wav')
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:preview')
     await events.click(screen.getByRole('link', { name: '前往工作台' }))
@@ -587,17 +591,17 @@ describe('application flows', () => {
     expect(screen.getByRole('button', { name: /我的声音/ })).toHaveAttribute('aria-pressed', 'true')
   })
   it('keeps the form available after upload failure and rejects oversized files', async () => {
-    currentUser = { ...user, role: 'admin' }
     saveSession(session)
     vi.stubGlobal('URL', class extends URL {
       static createObjectURL = vi.fn().mockReturnValue('blob:preview')
       static revokeObjectURL = vi.fn()
     })
-    const fetcher = mockApi((path) => {
-      if (path === '/api/admin/speakers')
+    const fetcher = mockApi((path, options) => {
+      if (path === '/api/speakers' && options?.method === 'POST')
         return Response.json({ detail: '音频时长需大于 0 且不超过 30 秒.' }, { status: 400 })
+      if (path === '/api/speakers/mine') return Response.json([])
     })
-    mount('/admin/system')
+    mount('/speakers')
     await screen.findByLabelText('参考音频')
     const events = userEvent.setup()
     await events.type(screen.getByLabelText('音色名称'), '我的声音')
@@ -610,8 +614,11 @@ describe('application flows', () => {
     Object.defineProperty(large, 'size', { value: 20 * 1024 * 1024 + 1 })
     await events.upload(screen.getByLabelText('参考音频'), large)
     expect(screen.getByRole('alert')).toHaveTextContent('20 MB')
-    expect(screen.getByRole('button', { name: '上传并添加音色' })).toBeDisabled()
-    expect(fetcher.mock.calls.filter(([path]) => path === '/api/admin/speakers')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: '创建音色' })).toBeDisabled()
+    const writes = fetcher.mock.calls.filter(
+      ([path, options]) => path === '/api/speakers' && options?.method === 'POST',
+    )
+    expect(writes).toHaveLength(1)
   })
   it('shows plaza voices with creators and presets the studio selection', async () => {
     saveSession(session)
