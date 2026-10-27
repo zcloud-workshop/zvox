@@ -1230,6 +1230,123 @@
   color: #b05561;
   background: #faeff1;
 }
+/* API 文档页 */
+.api-docs {
+  max-width: 880px;
+}
+.api-docs .panel {
+  margin-top: 24px;
+}
+.api-docs .panel > .muted {
+  font-size: 13px;
+  line-height: 1.9;
+}
+.endpoint {
+  border-top: 1px solid var(--border);
+  padding: 22px 0 6px;
+}
+.endpoint:first-of-type {
+  border-top: none;
+}
+.endpoint-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.method-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.method-badge.get {
+  color: #477e6c;
+  background: #eef6f1;
+}
+.method-badge.post {
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+}
+.method-badge.patch {
+  color: #8a6d2f;
+  background: #faf3e3;
+}
+.method-badge.delete {
+  color: #b34150;
+  background: #faeff1;
+}
+.endpoint-path {
+  font-size: 13px;
+  font-weight: 600;
+}
+.auth-chip {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+.endpoint-desc {
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+.param-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin: 14px 0 4px;
+}
+.param-table th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 550;
+  font-size: 11px;
+  padding: 0 16px 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+.param-table td {
+  padding: 7px 16px 7px 0;
+  border-bottom: 1px solid #f1f1f6;
+  vertical-align: top;
+}
+.param-table tr:last-child td {
+  border-bottom: none;
+}
+.endpoint-success {
+  margin: 14px 0 0;
+  font-size: 12.5px;
+}
+.endpoint-errors {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+.endpoint-errors li::before {
+  content: '· ';
+}
+.code-label {
+  margin: 18px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.code-block {
+  background: #f8f7fc;
+  border: 1px solid #eeebf7;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-x: auto;
+  white-space: pre;
+  margin: 10px 0 0;
+}
 @media (min-width: 1600px) {
   .main-content {
     padding-top: 60px;

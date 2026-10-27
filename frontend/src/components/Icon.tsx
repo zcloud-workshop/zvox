@@ -1,7 +1,7 @@
 export function Icon({
   name,
 }: {
-  name: 'studio' | 'jobs' | 'user' | 'settings' | 'arrow' | 'search' | 'plaza' | 'voice'
+  name: 'studio' | 'jobs' | 'user' | 'settings' | 'arrow' | 'search' | 'plaza' | 'voice' | 'docs'
 }) {
   const paths = {
     studio: 'M4 10v4m4-9v14m4-16v18m4-16v14m4-9v4',
@@ -12,6 +12,7 @@ export function Icon({
     search: 'M16 16l5 5M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0',
     plaza: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
     voice: 'M3 11v2m4-7v12m4-15v18m4-15v12m4-7v2',
+    docs: 'M12 6c-2-1.5-4.6-2-8-2v14c3.4 0 6 .5 8 2 2-1.5 4.6-2 8-2V4c-3.4 0-6 .5-8 2zm0 0v14',
   }
   return (
     <svg

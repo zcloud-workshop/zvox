@@ -11,6 +11,7 @@ import { Account } from './pages/Account'
 import { AdminReviews } from './pages/AdminReviews'
 import { AdminSystem } from './pages/AdminSystem'
 import { AdminUsers } from './pages/AdminUsers'
+import { ApiDocs } from './pages/ApiDocs'
 import { JobDetail } from './pages/JobDetail'
 import { Jobs } from './pages/Jobs'
 import { Login } from './pages/Login'
@@ -25,6 +26,7 @@ function pageName(pathname: string, isAdmin: boolean) {
   if (pathname === '/jobs') return isAdmin ? '全部作品' : '我的作品'
   if (pathname.startsWith('/jobs/')) return '作品详情'
   if (pathname === '/account') return '账号设置'
+  if (pathname === '/docs') return 'API 文档'
   if (pathname === '/admin/users') return '用户管理'
   if (pathname === '/admin/reviews') return '音色审核'
   if (pathname === '/admin/system') return '系统管理'
@@ -84,6 +86,10 @@ function Layout() {
           <NavLink to="/account">
             <Icon name="user" />
             账号设置
+          </NavLink>
+          <NavLink to="/docs">
+            <Icon name="docs" />
+            API 文档
           </NavLink>
           {auth.user?.role === 'admin' && (
             <>
@@ -168,6 +174,7 @@ export default function App() {
           <Route path="jobs" element={<Jobs />} />
           <Route path="jobs/:id" element={<JobDetail />} />
           <Route path="account" element={<Account />} />
+          <Route path="docs" element={<ApiDocs />} />
           <Route element={<RequireAuth admin />}>
             <Route path="admin/users" element={<AdminUsers />} />
             <Route path="admin/reviews" element={<AdminReviews />} />
