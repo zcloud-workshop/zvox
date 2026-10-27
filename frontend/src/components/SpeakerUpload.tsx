@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
-import { createSpeaker } from '../api/speakers'
+import { createMySpeaker, createSpeaker } from '../api/speakers'
 import { useAction } from '../hooks/useAction'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { ErrorNotice } from './Feedback'
 
 const readingText = '清晨的阳光洒在窗前, 微风轻轻吹过树梢, 我用温暖的声音迎接美好的一天.'
 
-export function SpeakerUpload() {
+export function SpeakerUpload({ variant = 'admin' }: { variant?: 'admin' | 'personal' }) {
   const action = useAction()
   const form = useRef<HTMLFormElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
   const [promptText, setPromptText] = useState('')
+  const [publish, setPublish] = useState(false)
   const [recorded, setRecorded] = useState(false)
   const [preview, setPreview] = useState('')
   const [notice, setNotice] = useState('')
@@ -47,22 +48,34 @@ export function SpeakerUpload() {
     if (!file || fileError || recordingBusy) return
     const body = new FormData(event.currentTarget)
     body.set('audio', file)
+    if (variant === 'personal') body.set('publish', String(publish))
     void action.run(async () => {
       setNotice('')
-      const speaker = await createSpeaker(body)
+      const speaker = variant === 'personal'
+        ? await createMySpeaker(body)
+        : await createSpeaker(body)
       form.current?.reset()
       setFile(null)
       setPreview('')
       setPromptText('')
+      setPublish(false)
       setRecorded(false)
-      setNotice(`音色 "${speaker.name}" 已添加, 可在工作台选择使用.`)
+      setNotice(variant === 'personal'
+        ? publish
+          ? `音色 "${speaker.name}" 已创建, 公开申请已提交管理员审核.`
+          : `音色 "${speaker.name}" 已创建, 默认仅自己可见, 可在下方申请公开.`
+        : `音色 "${speaker.name}" 已添加, 可在工作台选择使用.`)
     })
   }
 
   return (
     <section className="panel speaker-upload" aria-labelledby="upload-title">
-      <h2 id="upload-title">添加音频</h2>
-      <p className="muted small">上传或录制一段清晰的单人语音, 创建所有用户可用的音色.</p>
+      <h2 id="upload-title">{variant === 'personal' ? '创建我的音色' : '添加音频'}</h2>
+      <p className="muted small">
+        {variant === 'personal'
+          ? '上传或录制一段清晰的单人语音, 创建属于你的音色; 音色默认私有, 仅自己可用.'
+          : '上传或录制一段清晰的单人语音, 创建所有用户可用的音色.'}
+      </p>
       <form ref={form} className="form-stack" onSubmit={submit}>
         <div className="settings-grid">
           <div className="upload-fields">
@@ -140,11 +153,22 @@ export function SpeakerUpload() {
             <ErrorNotice message={fileError} />
           </div>
         </div>
+        {variant === 'personal' && (
+          <label className="publish-toggle">
+            <input
+              type="checkbox"
+              checked={publish}
+              disabled={action.busy}
+              onChange={(event) => setPublish(event.target.checked)}
+            />
+            创建后立即申请公开到音色广场 (需管理员审核)
+          </label>
+        )}
         <ErrorNotice message={action.error} />
         {notice && <p className="notice success" role="status">{notice}</p>}
         <div className="button-row">
           <button className="button primary" disabled={action.busy || recordingBusy || !file || !!fileError}>
-            {action.busy ? '正在上传...' : '上传并添加音色'}
+            {action.busy ? '正在上传...' : variant === 'personal' ? '创建音色' : '上传并添加音色'}
           </button>
           <Link className="button secondary" to="/">前往工作台</Link>
         </div>

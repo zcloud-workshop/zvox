@@ -142,7 +142,11 @@ class UserApiTests(DatabaseCase):
         alice_auth = self.auth("alice", "alice-password-123")
         self.assertEqual(
             self.client.get("/api/speakers", headers=alice_auth).json(),
-            [{"id": 1, "name": "Speaker", "description": None, "icon_url": None}],
+            [{
+                "id": 1, "name": "Speaker", "description": None, "icon_url": None,
+                "owner_id": None, "owner_username": None, "status": None,
+                "review_comment": None, "audio_url": None,
+            }],
         )
         self.assertEqual(self.client.get("/api/speakers/1", headers=alice_auth).status_code, 200)
         self.assertEqual(self.client.get("/api/speakers/2", headers=alice_auth).status_code, 404)
@@ -469,7 +473,7 @@ class JobRecoveryTests(DatabaseCase):
             asyncio.get_running_loop().set_debug(True)
             queue = asyncio.Queue()
             with patch.object(job_service, "job_queue", queue):
-                job_id = await job_service.create_job(1, "hello", None, owner["id"])
+                job_id = await job_service.create_job(1, "hello", None, owner)
                 self.assertEqual(await asyncio.wait_for(queue.get(), timeout=1), job_id)
                 queue.task_done()
 
@@ -487,7 +491,7 @@ class JobRecoveryTests(DatabaseCase):
             with patch.object(job_service, "job_queue", queue), patch.object(
                 job_service, "db_insert_job", side_effect=delayed_insert
             ):
-                task = asyncio.create_task(job_service.create_job(1, "cancelled", None, owner["id"]))
+                task = asyncio.create_task(job_service.create_job(1, "cancelled", None, owner))
                 self.assertTrue(await asyncio.to_thread(started.wait, 1))
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
@@ -622,14 +626,14 @@ class SpeakerUploadTests(DatabaseCase):
                 response = self.upload(audio, **fields)
                 self.assertEqual(response.status_code, status, response.text)
         self.storage.put_object.assert_not_called()
-        self.assertEqual(database.db_list_speakers(), [])
+        self.assertEqual(database.db_list_speakers({"id": 0, "role": "admin"}), [])
 
     def test_storage_failure_cleans_up_and_does_not_publish_speaker(self):
         self.storage.put_object.side_effect = [None, RuntimeError("storage unavailable")]
         with self.assertLogs("app.api.admin", level="ERROR"):
             response = self.upload()
         self.assertEqual(response.status_code, 503)
-        self.assertEqual(database.db_list_speakers(), [])
+        self.assertEqual(database.db_list_speakers({"id": 0, "role": "admin"}), [])
         deleted = [call.kwargs["Key"] for call in self.storage.delete_object.call_args_list]
         self.assertTrue(deleted[0].endswith("vox-data.json"))
         self.assertTrue(deleted[1].endswith("reference.wav"))
@@ -640,7 +644,195 @@ class SpeakerUploadTests(DatabaseCase):
         ):
             self.assertEqual(self.upload().status_code, 503)
         self.assertEqual(self.storage.delete_object.call_count, 2)
-        self.assertEqual(database.db_list_speakers(), [])
+        self.assertEqual(database.db_list_speakers({"id": 0, "role": "admin"}), [])
+
+
+class SpeakerSharingTests(DatabaseCase):
+    def setUp(self):
+        super().setUp()
+        self.admin = user.create_user("admin", "admin-password-123", "admin")
+        self.alice = user.create_user("alice", "alice-password-123")
+        self.bob = user.create_user("bob", "bob-password-123")
+        self.client = TestClient(app)
+        self.addCleanup(self.client.close)
+        self.addCleanup(self._drain_queue)
+        self.storage = Mock()
+        storage_patch = patch.object(speaker, "s3", self.storage)
+        storage_patch.start()
+        self.addCleanup(storage_patch.stop)
+
+    def _drain_queue(self):
+        while not tts.job_queue.empty():
+            tts.job_queue.get_nowait()
+            tts.job_queue.task_done()
+
+    def auth(self, username: str, password: str) -> dict:
+        response = self.client.post("/api/auth/login", json={"username": username, "password": password})
+        self.assertEqual(response.status_code, 200, response.text)
+        return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+    def audio(self):
+        output = BytesIO()
+        with wave.open(output, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(16000)
+            wav.writeframes(b"\x01\x00" * 16000)
+        return output.getvalue()
+
+    def create_speaker(self, headers: dict, publish: str = "false", name: str = "Alice Voice"):
+        return self.client.post(
+            "/api/speakers", headers=headers,
+            data={"name": name, "prompt_text": "你好世界", "publish": publish},
+            files={"audio": ("voice.wav", self.audio(), "audio/wav")},
+        )
+
+    def create_private_speaker(self) -> tuple[int, dict, dict, dict]:
+        alice_auth = self.auth("alice", "alice-password-123")
+        response = self.create_speaker(alice_auth)
+        self.assertEqual(response.status_code, 201, response.text)
+        return response.json()["id"], alice_auth, self.auth("bob", "bob-password-123"), self.auth(
+            "admin", "admin-password-123"
+        )
+
+    def test_private_speaker_only_visible_and_usable_by_owner_and_admin(self):
+        speaker_id, alice_auth, bob_auth, admin_auth = self.create_private_speaker()
+        created = self.client.get("/api/speakers/mine", headers=alice_auth).json()
+        self.assertEqual([item["id"] for item in created], [speaker_id])
+        self.assertEqual(created[0]["status"], "private")
+        self.assertEqual(created[0]["owner_username"], "alice")
+        self.assertEqual(self.client.get("/api/speakers", headers=bob_auth).json(), [])
+        self.assertEqual(self.client.get(f"/api/speakers/{speaker_id}", headers=bob_auth).status_code, 404)
+        self.assertEqual(self.client.get("/api/speakers/plaza", headers=bob_auth).json(), [])
+        self.assertEqual(
+            self.client.post("/api/jobs", headers=bob_auth, json={"speaker_id": speaker_id, "text": "hi"}).status_code,
+            403,
+        )
+        self.assertIn(speaker_id, [item["id"] for item in self.client.get("/api/speakers", headers=admin_auth).json()])
+        self.assertEqual(
+            self.client.post("/api/jobs", headers=alice_auth, json={"speaker_id": speaker_id, "text": "hi"}).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.post("/api/jobs", headers=admin_auth, json={"speaker_id": speaker_id, "text": "hi"}).status_code,
+            200,
+        )
+
+    def test_publish_review_and_plaza_flow(self):
+        alice_auth = self.auth("alice", "alice-password-123")
+        bob_auth = self.auth("bob", "bob-password-123")
+        admin_auth = self.auth("admin", "admin-password-123")
+        response = self.create_speaker(alice_auth, publish="true")
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()["status"], "pending")
+        speaker_id = response.json()["id"]
+        self.assertEqual(self.client.get("/api/speakers/mine", headers=alice_auth).json()[0]["status"], "pending")
+
+        self.assertEqual(self.client.get("/api/admin/speakers/reviews", headers=alice_auth).status_code, 403)
+        [review] = self.client.get("/api/admin/speakers/reviews", headers=admin_auth).json()
+        self.assertEqual((review["id"], review["owner_username"], review["status"]), (speaker_id, "alice", "pending"))
+
+        approved = self.client.post(
+            f"/api/admin/speakers/{speaker_id}/review", headers=admin_auth, json={"decision": "approve"}
+        )
+        self.assertEqual(approved.status_code, 200, approved.text)
+        self.assertEqual(approved.json()["status"], "approved")
+        self.assertIn(speaker_id, [item["id"] for item in self.client.get("/api/speakers", headers=bob_auth).json()])
+        [plaza_item] = self.client.get("/api/speakers/plaza", headers=bob_auth).json()
+        self.assertEqual((plaza_item["id"], plaza_item["owner_username"]), (speaker_id, "alice"))
+        self.assertEqual(
+            self.client.post("/api/jobs", headers=bob_auth, json={"speaker_id": speaker_id, "text": "hi"}).status_code,
+            200,
+        )
+        self.assertEqual(self.client.get("/api/admin/speakers/reviews", headers=admin_auth).json(), [])
+
+        # 创建者下架后, 其他用户立即失去可见与使用权限.
+        self.assertEqual(
+            self.client.post(f"/api/speakers/{speaker_id}/withdraw", headers=alice_auth).status_code, 204
+        )
+        self.assertEqual(self.client.get("/api/speakers", headers=bob_auth).json(), [])
+        self.assertEqual(self.client.get("/api/speakers/plaza", headers=bob_auth).json(), [])
+        self.assertEqual(
+            self.client.post("/api/jobs", headers=bob_auth, json={"speaker_id": speaker_id, "text": "hi"}).status_code,
+            403,
+        )
+
+    def test_reject_keeps_comment_and_allows_resubmit(self):
+        speaker_id, alice_auth, _, admin_auth = self.create_private_speaker()
+        self.assertEqual(self.client.post(f"/api/speakers/{speaker_id}/submit", headers=alice_auth).status_code, 204)
+        # 待审核期间重复提交应拒绝.
+        self.assertEqual(
+            self.client.post(f"/api/speakers/{speaker_id}/submit", headers=alice_auth).status_code, 409
+        )
+        rejected = self.client.post(
+            f"/api/admin/speakers/{speaker_id}/review", headers=admin_auth,
+            json={"decision": "reject", "comment": "音频质量不足"},
+        )
+        self.assertEqual(rejected.status_code, 200, rejected.text)
+        mine = self.client.get("/api/speakers/mine", headers=alice_auth).json()
+        self.assertEqual((mine[0]["status"], mine[0]["review_comment"]), ("rejected", "音频质量不足"))
+        # 非待审核状态不能审核, 被驳回的音色也不能撤回.
+        self.assertEqual(
+            self.client.post(
+                f"/api/admin/speakers/{speaker_id}/review", headers=admin_auth, json={"decision": "approve"}
+            ).status_code,
+            409,
+        )
+        self.assertEqual(
+            self.client.post(f"/api/speakers/{speaker_id}/withdraw", headers=alice_auth).status_code, 409
+        )
+        # 被驳回的音色重新提交后再次进入待审核并清空意见.
+        self.assertEqual(self.client.post(f"/api/speakers/{speaker_id}/submit", headers=alice_auth).status_code, 204)
+        mine = self.client.get("/api/speakers/mine", headers=alice_auth).json()
+        self.assertEqual((mine[0]["status"], mine[0]["review_comment"]), ("pending", None))
+
+    def test_speaker_actions_require_owner(self):
+        speaker_id, alice_auth, bob_auth, admin_auth = self.create_private_speaker()
+        for headers in (bob_auth, admin_auth):
+            with self.subTest(role=headers is admin_auth and "admin" or "bob"):
+                self.assertEqual(
+                    self.client.post(f"/api/speakers/{speaker_id}/submit", headers=headers).status_code, 404
+                )
+                self.assertEqual(
+                    self.client.post(f"/api/speakers/{speaker_id}/withdraw", headers=headers).status_code, 404
+                )
+        self.assertEqual(self.client.post("/api/speakers/999/submit", headers=alice_auth).status_code, 404)
+        # 私有音色不能直接撤回到相同状态.
+        self.assertEqual(
+            self.client.post(f"/api/speakers/{speaker_id}/withdraw", headers=alice_auth).status_code, 409
+        )
+
+    def test_speaker_quota_per_user(self):
+        alice_auth = self.auth("alice", "alice-password-123")
+        with patch.object(speaker, "MAX_SPEAKERS_PER_USER", 2):
+            self.assertEqual(self.create_speaker(alice_auth, name="One").status_code, 201)
+            self.assertEqual(self.create_speaker(alice_auth, name="Two").status_code, 201)
+            response = self.create_speaker(alice_auth, name="Three")
+            self.assertEqual(response.status_code, 409, response.text)
+        # 配额只作用于单个用户.
+        self.assertEqual(self.create_speaker(self.auth("bob", "bob-password-123"), name="Bob Voice").status_code, 201)
+
+    def test_sync_preserves_ownership_and_status(self):
+        alice_auth = self.auth("alice", "alice-password-123")
+        admin_auth = self.auth("admin", "admin-password-123")
+        response = self.create_speaker(alice_auth, publish="true")
+        speaker_id = response.json()["id"]
+        self.assertEqual(
+            self.client.post(
+                f"/api/admin/speakers/{speaker_id}/review", headers=admin_auth, json={"decision": "approve"}
+            ).status_code,
+            200,
+        )
+        metadata = self.storage.put_object.call_args_list[1].kwargs
+        self.storage.get_paginator.return_value.paginate.return_value = [
+            {"Contents": [{"Key": metadata["Key"]}]}
+        ]
+        self.storage.get_object.return_value = {"Body": BytesIO(metadata["Body"])}
+        with patch.object(sync, "s3", self.storage):
+            self.assertEqual(sync.sync_speakers_to_db(), (1, 0))
+        row = database.db_get_speaker(speaker_id)
+        self.assertEqual(row["owner_user_id"], self.alice["id"])
+        self.assertEqual(row["status"], "approved")
 
 
 class SyncTests(DatabaseCase):
@@ -691,7 +883,7 @@ class SyncTests(DatabaseCase):
         self.assertIsNone(database.db_get_speaker(1))
         self.assertEqual(database.db_get_speaker(2)["name"], "Imported")
         self.assertEqual(speaker.get_voices(2)["prompt_wav_path"], "speaker/2/a.wav")
-        self.assertEqual(asyncio.run(speaker.get_speaker(2)).id, 2)
+        self.assertEqual(asyncio.run(speaker.get_speaker(2, {"id": 0, "role": "user"})).id, 2)
 
     def test_updated_metadata_and_partial_deletion(self):
         first = "speaker/1/vox-data.json"

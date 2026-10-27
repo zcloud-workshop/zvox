@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 
 from app.api.users import require_admin
-from app.models.schemas import Speaker, WorkerStatus
+from app.models.schemas import ReviewSpeakerRequest, Speaker, WorkerStatus
 from app.services import speaker as speaker_service
 from app.services.model import get_download_status, start_download
 from app.services.sync import claim_sync, do_sync, get_sync_status as sync_status_snapshot
@@ -34,6 +34,23 @@ async def create_speaker(
     except Exception as exc:
         logging.getLogger(__name__).exception("Could not create speaker")
         raise HTTPException(status_code=503, detail="Could not save speaker") from exc
+
+
+@router.get("/speakers/reviews", response_model=list[Speaker])
+async def list_speaker_reviews():
+    """列出待审核的广场公开申请"""
+    return await speaker_service.list_pending_speakers()
+
+
+@router.post("/speakers/{speaker_id}/review", response_model=Speaker)
+async def review_speaker(speaker_id: int, req: ReviewSpeakerRequest):
+    """审核公开申请: 通过后音色进入广场, 驳回附审核意见"""
+    try:
+        return await speaker_service.review_speaker(speaker_id, req.decision, req.comment)
+    except speaker_service.SpeakerNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except speaker_service.InvalidSpeakerState as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/speakers/sync")

@@ -25,11 +25,17 @@ export interface ApiKey {
 export interface CreatedApiKey extends ApiKey {
   key: string
 }
+export type SpeakerStatus = 'private' | 'pending' | 'approved' | 'rejected'
 export interface Speaker {
   id: number
   name: string | null
   description: string | null
   icon_url: string | null
+  owner_id: number | null
+  owner_username: string | null
+  status: SpeakerStatus | null
+  review_comment: string | null
+  audio_url: string | null
 }
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed'
 export interface JobListItem {

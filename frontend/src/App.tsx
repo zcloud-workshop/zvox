@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router'
+import { Link, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { logout } from './api/auth'
 import { ApiError } from './api/client'
 import { useAuth } from './auth/context'
@@ -8,16 +8,33 @@ import { Avatar } from './components/Avatar'
 import { EmptyState } from './components/Feedback'
 import { Icon } from './components/Icon'
 import { Account } from './pages/Account'
+import { AdminReviews } from './pages/AdminReviews'
 import { AdminSystem } from './pages/AdminSystem'
 import { AdminUsers } from './pages/AdminUsers'
 import { JobDetail } from './pages/JobDetail'
 import { Jobs } from './pages/Jobs'
 import { Login } from './pages/Login'
+import { MySpeakers } from './pages/MySpeakers'
+import { Plaza } from './pages/Plaza'
 import { Studio } from './pages/Studio'
+
+function pageName(pathname: string, isAdmin: boolean) {
+  if (pathname === '/') return '语音工作台'
+  if (pathname === '/plaza') return '音色广场'
+  if (pathname === '/speakers') return '我的音色'
+  if (pathname === '/jobs') return isAdmin ? '全部作品' : '我的作品'
+  if (pathname.startsWith('/jobs/')) return '作品详情'
+  if (pathname === '/account') return '账号设置'
+  if (pathname === '/admin/users') return '用户管理'
+  if (pathname === '/admin/reviews') return '音色审核'
+  if (pathname === '/admin/system') return '系统管理'
+  return '声音创作空间'
+}
 
 function Layout() {
   const auth = useAuth()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [loggingOut, setLoggingOut] = useState(false)
   async function signOut() {
     if (loggingOut) return
@@ -52,6 +69,14 @@ function Layout() {
             <Icon name="studio" />
             语音工作台
           </NavLink>
+          <NavLink to="/plaza">
+            <Icon name="plaza" />
+            音色广场
+          </NavLink>
+          <NavLink to="/speakers">
+            <Icon name="voice" />
+            我的音色
+          </NavLink>
           <NavLink to="/jobs">
             <Icon name="jobs" />
             {auth.user?.role === 'admin' ? '全部作品' : '我的作品'}
@@ -66,6 +91,10 @@ function Layout() {
               <NavLink to="/admin/users">
                 <Icon name="user" />
                 用户管理
+              </NavLink>
+              <NavLink to="/admin/reviews">
+                <Icon name="voice" />
+                音色审核
               </NavLink>
               <NavLink to="/admin/system">
                 <Icon name="settings" />
@@ -109,8 +138,9 @@ function Layout() {
       </aside>
       <div className="workspace">
         <header className="topbar">
-          <span>
-            ZVox <span className="breadcrumb-divider">/</span> 声音创作空间
+          <span aria-current="page">
+            ZVox <span className="breadcrumb-divider">/</span>{' '}
+            {pageName(pathname, auth.user?.role === 'admin')}
           </span>
           <span className="topbar-caption">CREATE SOMETHING WORTH HEARING</span>
         </header>
@@ -133,11 +163,14 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
           <Route index element={<Studio />} />
+          <Route path="plaza" element={<Plaza />} />
+          <Route path="speakers" element={<MySpeakers />} />
           <Route path="jobs" element={<Jobs />} />
           <Route path="jobs/:id" element={<JobDetail />} />
           <Route path="account" element={<Account />} />
           <Route element={<RequireAuth admin />}>
             <Route path="admin/users" element={<AdminUsers />} />
+            <Route path="admin/reviews" element={<AdminReviews />} />
             <Route path="admin/system" element={<AdminSystem />} />
           </Route>
           <Route

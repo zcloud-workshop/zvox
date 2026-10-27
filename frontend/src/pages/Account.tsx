@@ -30,7 +30,7 @@ export function Account() {
         description="管理你的账号, 登录密码与 API Key."
       />
       <div className="settings-grid">
-        <section className="panel">
+        <section className="panel profile-panel">
           <h2>个人信息</h2>
           <dl className="account-info">
             <dt>用户名</dt>
@@ -44,7 +44,7 @@ export function Account() {
             </dd>
           </dl>
         </section>
-        <section className="panel">
+        <section className="panel password-panel">
           <h2>修改密码</h2>
           <p className="muted">
             修改后, 所有设备都需要重新登录, 已创建的 API Key 也会失效.

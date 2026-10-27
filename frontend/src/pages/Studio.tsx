@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { listSpeakers } from '../api/speakers'
 import { createJob } from '../api/jobs'
-import { useAuth } from '../auth/context'
 import { Avatar } from '../components/Avatar'
 import { EmptyState, ErrorNotice, PageHeading } from '../components/Feedback'
 import { Icon } from '../components/Icon'
@@ -10,14 +9,17 @@ import { useAction } from '../hooks/useAction'
 import { useQuery } from '../hooks/useQuery'
 
 export function Studio() {
-  const { user } = useAuth()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
   const speakers = useQuery(listSpeakers)
   const action = useAction()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [text, setText] = useState('')
-  const selected = speakers.data?.find((speaker) => speaker.id === selectedId)
+  // 从音色广场跳转时通过 ?speaker= 预选音色, 手动选择后以手动选择为准.
+  const presetId = Number(params.get('speaker')) || null
+  const activeId = selectedId ?? presetId
+  const selected = speakers.data?.find((speaker) => speaker.id === activeId)
   const visible =
     speakers.data?.filter((speaker) =>
       (speaker.name ?? `音色 ${speaker.id}`)
@@ -81,8 +83,8 @@ export function Studio() {
             {visible.map((speaker) => (
               <button
                 key={speaker.id}
-                className={`voice-card ${selectedId === speaker.id ? 'selected' : ''}`}
-                aria-pressed={selectedId === speaker.id}
+                className={`voice-card ${activeId === speaker.id ? 'selected' : ''}`}
+                aria-pressed={activeId === speaker.id}
                 onClick={() => setSelectedId(speaker.id)}
               >
                 <Avatar
@@ -100,9 +102,7 @@ export function Studio() {
               </button>
             ))}
           </div>
-          {user?.role === 'admin' && (
-            <Link className="button secondary" to="/admin/system">添加音频</Link>
-          )}
+          <Link className="button secondary" to="/speakers">创建我的音色</Link>
           <p className="panel-footnote">每一种声音, 都有自己的表达.</p>
         </section>
         <form className="panel editor-panel" onSubmit={submit}>

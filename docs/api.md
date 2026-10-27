@@ -100,12 +100,30 @@ curl -H "Authorization: Bearer $ZVOX_API_KEY" http://127.0.0.1:8000/api/speakers
 
 ## Speaker 管理
 
-### 列出所有 Speaker
+### 音色归属与权限
+
+音色分两类: 管理员创建或 S3 导入的**系统音色** (`owner_id` 为 `null`, 对所有用户可见可用), 以及用户创建的**个人音色** (有归属创建者). 个人音色的状态流转:
+
+```text
+private (私有, 仅创建者和管理员可用)
+  │ 提交公开申请 (创建者)
+  ▼
+pending (审核中) ──管理员驳回(可附意见)──▶ rejected (未通过, 可重新提交)
+  │ 管理员通过
+  ▼
+approved (已公开, 进入音色广场, 所有用户可用) ──创建者撤回/下架──▶ private
+```
+
+每位用户最多创建 `MAX_SPEAKERS_PER_USER` 个音色 (默认 20), 超出返回 `409`. 非创建者操作他人的音色返回 `404` (不暴露存在性), 非法状态转换返回 `409`. 创建语音任务 (`POST /api/jobs`) 同样受此权限约束, 无权使用的音色返回 `403`.
+
+### 列出可用 Speaker
 
 ```text
 GET /api/speakers
 Authorization: Bearer <access_token>
 ```
+
+返回当前用户的可用音色: 系统音色、自己创建的音色和广场已公开音色. 管理员返回全部音色.
 
 ```json
 [
@@ -113,9 +131,23 @@ Authorization: Bearer <access_token>
     "id": 1,
     "name": "亚托克斯",
     "description": "暗裔剑魔...",
-    "icon_url": "https://s3.example.com/vox-warehouse/speaker/1/icon.png"
+    "icon_url": "https://s3.example.com/vox-warehouse/speaker/1/icon.png",
+    "owner_id": null,
+    "owner_username": null,
+    "status": null,
+    "review_comment": null,
+    "audio_url": null
   }
 ]
+```
+
+`owner_id` 为 `null` 表示系统音色; `status` 仅个人音色有值; `audio_url` 为参考音频预签名链接 (试听用), 列表接口恒为 `null`.
+
+### 音色广场与我创建的音色
+
+```text
+GET /api/speakers/plaza   # 广场: 系统音色 + 已公开音色, 附创建者与试听 audio_url
+GET /api/speakers/mine    # 我创建的音色, 附状态、审核意见与试听 audio_url
 ```
 
 ### 获取单个 Speaker
@@ -124,20 +156,34 @@ Authorization: Bearer <access_token>
 GET /api/speakers/1
 ```
 
-列表和详情仅对登录用户开放, 未登录或 Token 无效返回 `401`.
+列表和详情仅对登录用户开放, 未登录或 Token 无效返回 `401`, 无权使用的音色返回 `404`.
 
-### 上传音频并创建 Speaker
+### 上传音频创建 Speaker
 
-管理员调用 `POST /api/admin/speakers`, 使用 `multipart/form-data` 提交:
+任何登录用户调用 `POST /api/speakers` 创建个人音色, 使用 `multipart/form-data` 提交:
 
 | 字段 | 要求 |
 | --- | --- |
 | `name` | 音色名称, 必填, 最多 100 字符 |
 | `prompt_text` | 音频对应文本, 必填, 最多 4096 字符 |
 | `description` | 描述, 可选, 最多 500 字符 |
+| `publish` | 可选, `true` 时创建后立即提交广场审核, 默认 `false` (私有) |
 | `audio` | WAV, MP3, FLAC 或 OGG 文件, 非空, 最大 20 MB, 最长 30 秒 |
 
-音频需为单声道或双声道, 采样率 8-192 kHz. 服务校验实际文件内容, 转为单声道 PCM WAV, 上传参考音频及 `vox-data.json` 后写入索引. 成功返回 `201` 和 Speaker 信息, 新音色立即对所有用户可见, 后续 S3 导入仍会保留. 无效音频返回 `400`, 超出文件大小返回 `413`, 字段校验失败返回 `422`, 保存失败返回 `503`. Web 入口位于系统管理的 "添加音频".
+音频需为单声道或双声道, 采样率 8-192 kHz. 服务校验实际文件内容, 转为单声道 PCM WAV, 上传参考音频及 `vox-data.json` 后写入索引. 成功返回 `201` 和 Speaker 信息 (含 `owner_id` 与 `status`). 超出个人配额返回 `409`, 无效音频返回 `400`, 超出文件大小返回 `413`, 字段校验失败返回 `422`, 保存失败返回 `503`. Web 入口位于 "我的音色" 页.
+
+管理员仍可通过 `POST /api/admin/speakers` (同上, 无 `publish` 字段) 创建系统音色, 创建后立即对所有用户可见, Web 入口位于系统管理.
+
+### 公开申请与审核
+
+```text
+POST /api/speakers/{id}/submit     # 创建者: private/rejected → pending, 成功 204
+POST /api/speakers/{id}/withdraw   # 创建者: pending/approved → private (已公开即从广场下架), 成功 204
+GET  /api/admin/speakers/reviews   # 管理员: 待审核列表, 含创建者与试听 audio_url
+POST /api/admin/speakers/{id}/review  # 管理员: {"decision": "approve" | "reject", "comment": "..."}
+```
+
+`comment` 可选 (最多 500 字符), 驳回时展示给创建者; 重新提交后清空. 审核通过后音色立即进入广场并对所有用户可用; 撤回或下架立即生效.
 
 ### 导入 Speaker 元数据
 
@@ -232,6 +278,7 @@ Authorization: Bearer <access_token>
 返回: `{"job_id": "a1b2c3..."}`
 
 - `text` 最大 4096 字符
+- 音色需对当前用户可用 (自己的音色、系统音色或广场已公开音色), 否则返回 `403`; 音色不存在返回 `404`
 - 任务排队执行, 同一时间只运行一个
 - 每位用户最多保留 `MAX_ACTIVE_JOBS_PER_USER` 个待处理或运行中的任务, 超限返回 `429`
 - 每位用户每小时最多创建 `MAX_JOBS_PER_HOUR` 个任务, 超限返回 `429`

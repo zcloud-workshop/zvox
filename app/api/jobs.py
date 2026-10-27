@@ -15,10 +15,12 @@ async def create_job(req: CreateJobRequest, request: Request, user: dict = Depen
             req.speaker_id,
             req.text,
             request.client.host if request.client else None,
-            user["id"],
+            user,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except job_service.JobLimitExceeded as e:
         raise HTTPException(status_code=429, detail=str(e))
     return {"job_id": job_id}

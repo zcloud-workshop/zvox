@@ -6,7 +6,7 @@ from app.db.database import db_get_job, db_get_speaker, db_insert_job, db_list_j
 from app.core.config import MAX_ACTIVE_JOBS_PER_USER, MAX_JOBS_PER_HOUR, PRESIGNED_EXPIRES_IN, S3_BUCKET
 from app.core.s3 import s3
 from app.models.schemas import Job, JobListItem
-from app.services.speaker import resolve_speaker_key
+from app.services.speaker import can_use
 from app.services.tts import job_queue
 from app.tools.url import build_icon_url
 
@@ -16,12 +16,14 @@ class JobLimitExceeded(Exception):
 
 
 def _insert_job(
-    speaker_id: int, text: str, client_ip: str | None, user_id: int, loop: asyncio.AbstractEventLoop
+    speaker_id: int, text: str, client_ip: str | None, user: dict, loop: asyncio.AbstractEventLoop
 ) -> str:
-    """校验 speaker, 创建任务, 返回 job_id"""
+    """校验 speaker 可用性, 创建任务, 返回 job_id"""
     speaker = db_get_speaker(speaker_id)
     if not speaker:
         raise ValueError(f"Speaker '{speaker_id}' not found")
+    if not can_use(speaker, user):
+        raise PermissionError(f"Speaker '{speaker_id}' is not available to this user")
 
     now = datetime.now(timezone.utc)
     job_id = uuid.uuid4().hex
@@ -33,15 +35,15 @@ def _insert_job(
         created_ip=client_ip,
     )
     if not db_insert_job(
-        job, user_id, MAX_ACTIVE_JOBS_PER_USER, MAX_JOBS_PER_HOUR, (now - timedelta(hours=1)).isoformat()
+        job, user["id"], MAX_ACTIVE_JOBS_PER_USER, MAX_JOBS_PER_HOUR, (now - timedelta(hours=1)).isoformat()
     ):
         raise JobLimitExceeded("Job limit exceeded")
     loop.call_soon_threadsafe(job_queue.put_nowait, job_id)
     return job_id
 
 
-async def create_job(speaker_id: int, text: str, client_ip: str | None, user_id: int) -> str:
-    return await asyncio.to_thread(_insert_job, speaker_id, text, client_ip, user_id, asyncio.get_running_loop())
+async def create_job(speaker_id: int, text: str, client_ip: str | None, user: dict) -> str:
+    return await asyncio.to_thread(_insert_job, speaker_id, text, client_ip, user, asyncio.get_running_loop())
 
 
 async def list_jobs(limit: int, before: str | None, user_id: int | None) -> list[JobListItem]:

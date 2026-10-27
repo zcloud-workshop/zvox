@@ -73,9 +73,20 @@ def create_tables(conn: psycopg.Connection):
             icon_path TEXT,
             prompt_text TEXT,
             prompt_wav_path TEXT,
-            reference_wav_path TEXT
+            reference_wav_path TEXT,
+            owner_user_id BIGINT REFERENCES users(id),
+            status TEXT,
+            review_comment TEXT,
+            created_at TEXT
         )
     """)
+    # status 仅为有主音色使用: private / pending / approved / rejected; 系统音色为 NULL.
+    conn.execute("ALTER TABLE speakers ADD COLUMN IF NOT EXISTS owner_user_id BIGINT REFERENCES users(id)")
+    conn.execute("ALTER TABLE speakers ADD COLUMN IF NOT EXISTS status TEXT")
+    conn.execute("ALTER TABLE speakers ADD COLUMN IF NOT EXISTS review_comment TEXT")
+    conn.execute("ALTER TABLE speakers ADD COLUMN IF NOT EXISTS created_at TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_speakers_owner_user_id ON speakers(owner_user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_speakers_status ON speakers(status)")
     conn.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES users(id)")
     conn.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS started_at TEXT")
     conn.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS finished_at TEXT")
@@ -132,24 +143,87 @@ def db_get_job(job_id: str, user_id: int | None = None) -> dict | None:
 
 
 def db_get_speaker(speaker_id: int) -> dict | None:
-    """根据 speaker_id 查询单条 speaker."""
+    """根据 speaker_id 查询单条 speaker, 附带创建者用户名."""
     with get_db() as conn:
-        return conn.execute("SELECT * FROM speakers WHERE id=%s", (speaker_id,)).fetchone()
+        return conn.execute(
+            "SELECT speakers.*, users.username AS owner_username "
+            "FROM speakers LEFT JOIN users ON users.id=speakers.owner_user_id "
+            "WHERE speakers.id=%s",
+            (speaker_id,),
+        ).fetchone()
 
 
-def db_insert_speaker(speaker_id: int, name: str, description: str, prompt_text: str, audio_key: str):
+def db_insert_speaker(
+    speaker_id: int, name: str, description: str, prompt_text: str, audio_key: str,
+    owner_user_id: int | None = None, status: str | None = None, created_at: str | None = None,
+):
     with get_db() as conn:
         conn.execute(
-            "INSERT INTO speakers (id, name, description, prompt_text, prompt_wav_path, reference_wav_path) "
-            "VALUES (%s, %s, %s, %s, %s, %s)",
-            (speaker_id, name, description, prompt_text, audio_key, audio_key),
+            "INSERT INTO speakers (id, name, description, prompt_text, prompt_wav_path, reference_wav_path, "
+            "owner_user_id, status, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (speaker_id, name, description, prompt_text, audio_key, audio_key, owner_user_id, status, created_at),
         )
 
 
-def db_list_speakers() -> list[dict]:
-    """查询所有 speaker."""
+_SPEAKER_SELECT = (
+    "SELECT speakers.id, speakers.name, speakers.description, speakers.icon_path, speakers.reference_wav_path, "
+    "speakers.owner_user_id, users.username AS owner_username, speakers.status, speakers.review_comment, "
+    "speakers.created_at FROM speakers LEFT JOIN users ON users.id=speakers.owner_user_id"
+)
+
+
+def db_list_speakers(user: dict) -> list[dict]:
+    """查询用户可用的 speaker: 管理员全量, 普通用户为系统音色、自己的音色与已公开音色."""
     with get_db() as conn:
-        return conn.execute("SELECT id, name, description, icon_path FROM speakers").fetchall()
+        if user["role"] == "admin":
+            return conn.execute(_SPEAKER_SELECT).fetchall()
+        return conn.execute(
+            _SPEAKER_SELECT + " WHERE speakers.owner_user_id IS NULL OR speakers.owner_user_id=%s "
+            "OR speakers.status='approved'",
+            (user["id"],),
+        ).fetchall()
+
+
+def db_list_plaza_speakers() -> list[dict]:
+    """查询音色广场的公开 speaker: 系统音色与审核通过的用户音色."""
+    with get_db() as conn:
+        return conn.execute(_SPEAKER_SELECT + " WHERE speakers.owner_user_id IS NULL "
+                            "OR speakers.status='approved' ORDER BY speakers.created_at DESC").fetchall()
+
+
+def db_list_user_speakers(user_id: int) -> list[dict]:
+    """查询指定用户创建的 speaker 及其审核状态."""
+    with get_db() as conn:
+        return conn.execute(
+            _SPEAKER_SELECT + " WHERE speakers.owner_user_id=%s ORDER BY speakers.created_at DESC", (user_id,)
+        ).fetchall()
+
+
+def db_list_pending_speakers() -> list[dict]:
+    """查询提交公开申请、待管理员审核的 speaker."""
+    with get_db() as conn:
+        return conn.execute(
+            _SPEAKER_SELECT + " WHERE speakers.status='pending' ORDER BY speakers.created_at DESC"
+        ).fetchall()
+
+
+def db_count_speakers_by_owner(user_id: int) -> int:
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) AS count FROM speakers WHERE owner_user_id=%s", (user_id,)
+        ).fetchone()["count"]
+
+
+def db_update_speaker_status(
+    speaker_id: int, status: str, allowed_from: tuple[str, ...], review_comment: str | None
+) -> dict | None:
+    """仅在当前状态属于 allowed_from 时更新状态与审核意见, 不满足时返回 None."""
+    with get_db() as conn:
+        return conn.execute(
+            "UPDATE speakers SET status=%s, review_comment=%s "
+            "WHERE id=%s AND status = ANY(%s) RETURNING *",
+            (status, review_comment, speaker_id, list(allowed_from)),
+        ).fetchone()
 
 
 def db_list_jobs(limit: int, before: str | None, user_id: int | None = None) -> list[dict]:

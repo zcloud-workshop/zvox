@@ -16,6 +16,17 @@ class Speaker(BaseModel):
     name: str | None = None
     description: str | None = None
     icon_url: str | None = None
+    owner_id: int | None = None  # None 表示系统音色
+    owner_username: str | None = None
+    status: Literal["private", "pending", "approved", "rejected"] | None = None
+    review_comment: str | None = None
+    audio_url: str | None = None  # 参考音频预签名链接, 用于试听
+
+
+# 管理员审核公开申请的请求体
+class ReviewSpeakerRequest(BaseModel):
+    decision: Literal["approve", "reject"]
+    comment: str | None = Field(default=None, max_length=500)
 
 
 # 创建语音生成任务的请求体

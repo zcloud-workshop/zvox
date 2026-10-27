@@ -613,4 +613,102 @@ describe('application flows', () => {
     expect(screen.getByRole('button', { name: '上传并添加音色' })).toBeDisabled()
     expect(fetcher.mock.calls.filter(([path]) => path === '/api/admin/speakers')).toHaveLength(1)
   })
+  it('shows plaza voices with creators and presets the studio selection', async () => {
+    saveSession(session)
+    const publicVoice = {
+      ...speaker,
+      id: 3,
+      name: '山语',
+      owner_id: 2,
+      owner_username: 'creator2',
+      status: 'approved',
+      review_comment: null,
+      audio_url: 'https://example.invalid/a.wav',
+    }
+    mockApi((path) => {
+      if (path === '/api/speakers/plaza') return Response.json([publicVoice])
+      if (path === '/api/speakers') return Response.json([speaker, publicVoice])
+    })
+    mount('/plaza')
+    expect(await screen.findByText('山语')).toBeInTheDocument()
+    expect(screen.getByText('创建者 creator2')).toBeInTheDocument()
+    expect(screen.getByText('公开')).toBeInTheDocument()
+    expect(screen.getByLabelText('试听参考音频')).toHaveAttribute(
+      'src',
+      'https://example.invalid/a.wav',
+    )
+    await userEvent.click(screen.getByRole('button', { name: '使用该音色' }))
+    expect(await screen.findByRole('button', { name: /山语/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+  it('submits a private voice for plaza review and withdraws it after approval', async () => {
+    saveSession(session)
+    let mine = [
+      {
+        ...speaker,
+        id: 7,
+        owner_id: user.id,
+        owner_username: user.username,
+        status: 'private',
+        review_comment: null,
+        audio_url: null,
+      },
+    ]
+    mockApi((path, options) => {
+      if (path === '/api/speakers/mine') return Response.json(mine)
+      if (path === '/api/speakers/7/submit' && options?.method === 'POST') {
+        mine = [{ ...mine[0], status: 'pending' }]
+        return new Response(null, { status: 204 })
+      }
+      if (path === '/api/speakers/7/withdraw' && options?.method === 'POST') {
+        mine = [{ ...mine[0], status: 'private' }]
+        return new Response(null, { status: 204 })
+      }
+    })
+    const events = userEvent.setup()
+    mount('/speakers')
+    expect(await screen.findByText('私有')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '创建音色' })).toBeInTheDocument()
+    await events.click(screen.getByRole('button', { name: '申请公开' }))
+    expect(await screen.findByText('审核中')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '申请公开' })).not.toBeInTheDocument()
+    await events.click(screen.getByRole('button', { name: '撤回审核' }))
+    expect(await screen.findByText('已撤回公开申请.')).toBeInTheDocument()
+    expect(await screen.findByText('私有')).toBeInTheDocument()
+  })
+  it('approves and rejects plaza submissions with a comment as an administrator', async () => {
+    currentUser = { ...user, role: 'admin' }
+    saveSession(session)
+    let reviews = [
+      {
+        ...speaker,
+        id: 9,
+        owner_id: 2,
+        owner_username: 'creator2',
+        status: 'pending',
+        review_comment: null,
+        audio_url: null,
+      },
+    ]
+    const decisions: unknown[] = []
+    mockApi((path, options) => {
+      if (path === '/api/admin/speakers/reviews') return Response.json(reviews)
+      if (path === '/api/admin/speakers/9/review' && options?.method === 'POST') {
+        decisions.push(JSON.parse(options!.body as string))
+        reviews = []
+        return Response.json({ ...speaker, id: 9, status: 'approved' })
+      }
+    })
+    const events = userEvent.setup()
+    mount('/admin/reviews')
+    expect(await screen.findByText('创建者 creator2')).toBeInTheDocument()
+    await events.click(screen.getByRole('button', { name: '驳回' }))
+    await events.type(screen.getByLabelText('驳回原因 (可选)'), '音质不足')
+    await events.click(screen.getByRole('button', { name: '确认驳回' }))
+    expect(await screen.findByText(/已驳回音色/)).toBeInTheDocument()
+    expect(await screen.findByText('暂无待审核音色')).toBeInTheDocument()
+    expect(decisions).toEqual([{ decision: 'reject', comment: '音质不足' }])
+  })
 })
